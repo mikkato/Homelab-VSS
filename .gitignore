@@ -1,0 +1,18 @@
+# Сборка
+.gradle/
+build/
+app/build/
+app/.cxx/
+.kotlin/
+local.properties
+
+# Прод-подпись — приватное
+keystore.properties
+*.jks
+*.keystore
+
+# Артефакты
+*.apk
+.DS_Store
+.idea/
+*.iml
