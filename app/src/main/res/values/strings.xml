@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FRGate</string>
+
+    <!-- Общие -->
+    <string name="ok">ОК</string>
+    <string name="cancel">Отмена</string>
+    <string name="save">Сохранить</string>
+    <string name="delete">Удалить</string>
+    <string name="close">Закрыть</string>
+    <string name="retry">Повторить</string>
+    <string name="loading">Загрузка…</string>
+    <string name="offline_banner">Нет связи — показан кэш</string>
+    <string name="error_generic">Ошибка</string>
+
+    <!-- Подключение -->
+    <string name="conn_title">Подключение к Frigate</string>
+    <string name="conn_url">Адрес сервера</string>
+    <string name="conn_login">Логин</string>
+    <string name="conn_password">Пароль</string>
+    <string name="conn_check">Проверить</string>
+    <string name="conn_connect">Подключиться</string>
+    <string name="conn_version_ok">Подключено. Frigate %1$s</string>
+    <string name="err_auth">Проверьте учётные данные (401)</string>
+    <string name="err_forbidden">Недостаточно прав (роль)</string>
+    <string name="err_badgateway">Сервер Frigate недоступен (туннель/контейнер)</string>
+    <string name="err_timeout">Нет связи с сервером</string>
+    <string name="err_tls">Ошибка TLS-соединения</string>
+
+    <!-- Вкладки -->
+    <string name="tab_live">Живое видео</string>
+    <string name="tab_review">Обзор</string>
+    <string name="tab_explore">Поиск</string>
+    <string name="tab_records">Архив</string>
+    <string name="tab_settings">Настройки</string>
+
+    <!-- Live -->
+    <string name="live_online">онлайн</string>
+    <string name="live_offline">офлайн %1$s</string>
+    <string name="live_grid_1">1 камера</string>
+    <string name="live_grid_2">2 камеры</string>
+    <string name="live_grid_4">4 камеры</string>
+    <string name="live_mode_http">HTTP</string>
+    <string name="live_mode_webrtc">WebRTC</string>
+    <string name="live_audio_on">Звук вкл</string>
+    <string name="live_buffering">Кадр не пришёл, переподключение %1$d…</string>
+    <string name="live_stream_error">Ошибка потока: %1$s</string>
+    <string name="live_audio_off">Звук выкл</string>
+    <string name="live_debug">Статистика</string>
+    <string name="live_fullscreen">Во весь экран</string>
+    <string name="webrtc_warning">WebRTC требует открытого порта 8555 (UDP/TCP) на роутере к серверу big-nas. Пока порт не открыт, соединение не установится (соединяется только SDP по HTTPS, поток медиа идёт напрямую). Использовать HTTP-режим, если видите чёрный экран &gt;10 с.</string>
+    <string name="webrtc_fallback">WebRTC недоступен, переключаюсь на HTTP</string>
+    <string name="webrtc_check">Проверить WebRTC</string>
+    <string name="quality_high">Высокое</string>
+    <string name="quality_sub">Пониженное</string>
+
+    <!-- PTZ -->
+    <string name="ptz_title">PTZ</string>
+    <string name="ptz_autotracker">Автотрекер</string>
+
+    <!-- Обзор -->
+    <string name="review_mark_viewed">Отметить прочитанным</string>
+    <string name="review_mark_unviewed">Снять прочитанное</string>
+    <string name="group_today">Сегодня</string>
+    <string name="group_yesterday">Вчера</string>
+    <string name="cat_alarm">Тревога</string>
+    <string name="cat_detection">Детекция</string>
+    <string name="cat_motion">Движение</string>
+
+    <!-- Событие -->
+    <string name="ev_download">Скачать</string>
+    <string name="ev_downloading">Скачивание… %1$d%%</string>
+    <string name="ev_downloaded">Сохранено: %1$s</string>
+    <string name="ev_share">Поделиться</string>
+    <string name="ev_retain">В избранное</string>
+    <string name="ev_unretain">В избранном</string>
+    <string name="ev_false_positive">Ложная</string>
+    <string name="ev_timeline">Таймлайн</string>
+    <string name="ev_camera">Камера</string>
+    <string name="ev_objects">Объекты</string>
+    <string name="ev_zones">Зоны</string>
+    <string name="ev_confidence">Достоверность</string>
+    <string name="ev_time">Время</string>
+    <string name="ev_duration">Длительность</string>
+    <string name="ev_speed">Скорость</string>
+    <string name="ev_size">Размер</string>
+    <string name="ev_id">ID</string>
+
+    <!-- Поиск -->
+    <string name="search_hint">Объект (например: машина)</string>
+    <string name="search_button">Найти</string>
+    <string name="filter_camera">Камера</string>
+    <string name="filter_label">Класс</string>
+    <string name="filter_dates">Период</string>
+    <string name="filter_retained">Только избранные</string>
+    <string name="preset_hour">Час</string>
+    <string name="preset_today">Сегодня</string>
+    <string name="preset_week">7 дней</string>
+    <string name="preset_all">Всё</string>
+    <string name="search_semantic_off">Семантический поиск выключен — текстовый поиск по событиям</string>
+
+    <!-- Архив -->
+    <string name="rec_select_day">Выберите день</string>
+    <string name="rec_select_hour">Часы за %1$s</string>
+    <string name="rec_no_data">Нет записей</string>
+    <string name="rec_export">Экспорт отрезка</string>
+    <string name="rec_exports">Экспорты</string>
+    <string name="rec_export_start">Создан экспорт %1$s</string>
+    <string name="speed_1">1×</string>
+    <string name="speed_2">2×</string>
+    <string name="speed_4">4×</string>
+
+    <!-- Уведомления -->
+    <string name="notif_channel_alarm">Тревожные события</string>
+    <string name="notif_channel_detection">Детекции</string>
+    <string name="notif_channel_motion">Движение</string>
+    <string name="notif_service_title">FRGate следит за камерами</string>
+    <string name="settings_notifications">Уведомления</string>
+    <string name="notif_enabled">Уведомления включены</string>
+    <string name="notif_filter_cats">Категории</string>
+    <string name="notif_filter_labels">Классы объектов</string>
+    <string name="notif_filter_cameras">Камеры</string>
+    <string name="notif_quiet">Тихие часы</string>
+    <string name="notif_quiet_from">С</string>
+    <string name="notif_quiet_to">До</string>
+
+    <!-- Настройки -->
+    <string name="settings_connection">Подключение</string>
+    <string name="settings_appearance">Внешний вид</string>
+    <string name="settings_theme">Тема</string>
+    <string name="theme_system">Системная</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
+    <string name="settings_live">Живое видео</string>
+    <string name="settings_live_mode">Способ трансляции по умолчанию</string>
+    <string name="settings_lte_quality">Автокачество ≤720p в мобильной сети</string>
+    <string name="settings_admin">Администрирование</string>
+    <string name="settings_cameras">Камеры</string>
+    <string name="settings_objects">Объекты</string>
+    <string name="settings_review_settings">Категории обзора по камерам</string>
+    <string name="settings_users">Пользователи и роли</string>
+    <string name="settings_system">Система</string>
+    <string name="settings_logs">Логи</string>
+    <string name="settings_restart">Перезапустить Frigate</string>
+    <string name="settings_saved">Сохранено</string>
+    <string name="settings_save_failed">Не сохранено: %1$s</string>
+    <string name="role_admin">Администратор</string>
+    <string name="role_viewer">Наблюдатель</string>
+
+    <!-- Система -->
+    <string name="sys_cpu">ЦП</string>
+    <string name="sys_ram">Память</string>
+    <string name="sys_gpu">Графика</string>
+    <string name="sys_storage">Диск</string>
+    <string name="sys_det_fps">Детектор, кадров/с</string>
+    <string name="sys_cam_fps">Камера, кадров/с</string>
+    <string name="log_frigate">Frigate</string>
+    <string name="log_go2rtc">go2rtc</string>
+    <string name="accept_all">Принять</string>
+</resources>
