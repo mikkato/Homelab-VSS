@@ -313,18 +313,9 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
 /** HTTP live: прогрессивный fMP4 от go2rtc через ExoPlayer (аудио по умолчанию выкл). */
 @Composable
 fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQuality: () -> Unit) {
-    val ctx = LocalContext.current
     var audioOn by remember { mutableStateOf(false) }
-    val player = remember {
-        ExoPlayer.Builder(ctx)
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
-                    ru.mytolm.frgate.MediaSources.okHttpDataSourceFactory()
-                )
-            )
-            .build().apply { playWhenReady = true; volume = 0f }
-    }
-    DisposableEffect(Unit) { onDispose { player.release() } }
+    val player = rememberAuthExoPlayer(live = true)
+    androidx.compose.runtime.SideEffect { player.volume = if (audioOn) 1f else 0f }
 
     var playError by remember { mutableStateOf<String?>(null) }
     var retries by remember { mutableStateOf(0) }
@@ -343,10 +334,7 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQua
         playError = null; retries = 0; playing = false
         val src = if (quality == "sub") "$camera-sub" else camera
         val url = appContainer.client.liveMp4Url(src)
-        player.setMediaItem(
-            MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_MP4)
-                .build()
-        )
+        player.setMediaItem(liveMediaItem(url, MimeTypes.APPLICATION_MP4))
         player.prepare()
         // нет кадра 12 с — переподготавливаем (эмулятор/слабая сеть: декодер или буфер не поднялись)
         var startMs = android.os.SystemClock.elapsedRealtime()

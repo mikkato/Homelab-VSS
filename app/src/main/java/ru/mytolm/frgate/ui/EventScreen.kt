@@ -196,19 +196,11 @@ private fun MetaRow(k: String, v: String) {
 /** PlayerView с контролами для клипа/записи. */
 @Composable
 fun EventPlayer(url: String) {
-    val ctx = LocalContext.current
-    val player = remember {
-        ExoPlayer.Builder(ctx)
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(MediaSources.okHttpDataSourceFactory())
-            )
-            .build().apply { playWhenReady = true }
-    }
+    val player = rememberAuthExoPlayer()
     LaunchedEffect(url) {
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
     }
-    DisposableEffect(Unit) { onDispose { player.release() } }
     AndroidView(
         factory = {
             PlayerView(it).apply {

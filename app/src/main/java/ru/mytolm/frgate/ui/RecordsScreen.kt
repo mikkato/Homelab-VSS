@@ -233,10 +233,7 @@ fun RecordPlayScreen(nav: NavHostController, camera: String, start: Long, end: L
 /** media3 HLS-плеер; перемотка/полноэкранный — встроенными контролами PlayerView. */
 @Composable
 fun HlsPlayer(url: String, speed: Float, onError: (String?) -> Unit) {
-    val ctx = LocalContext.current
-    val player = remember {
-        ExoPlayerWithOkHttp(ctx)
-    }
+    val player = rememberAuthExoPlayer()
     LaunchedEffect(url) {
         player.setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
         player.prepare()
@@ -249,7 +246,8 @@ fun HlsPlayer(url: String, speed: Float, onError: (String?) -> Unit) {
             }
         }
         player.addListener(listener)
-        onDispose { player.removeListener(listener); player.release() }
+        // release и пауза по ON_STOP — в rememberAuthExoPlayer (top10-3)
+        onDispose { player.removeListener(listener) }
     }
     androidx.compose.ui.viewinterop.AndroidView(
         factory = {
@@ -262,10 +260,3 @@ fun HlsPlayer(url: String, speed: Float, onError: (String?) -> Unit) {
         modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
     )
 }
-
-private fun ExoPlayerWithOkHttp(ctx: android.content.Context): androidx.media3.exoplayer.ExoPlayer =
-    androidx.media3.exoplayer.ExoPlayer.Builder(ctx)
-        .setMediaSourceFactory(
-            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(MediaSources.okHttpDataSourceFactory())
-        )
-        .build().apply { playWhenReady = true }
