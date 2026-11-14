@@ -16,7 +16,7 @@ class AuthHttpFetcher(private val client: OkHttpClient, private val target: Stri
     override suspend fun fetch(): FetchResult {
         val req = okhttp3.Request.Builder().url(target).build()
         val resp = client.newCall(req).execute()
-        android.util.Log.d("FRGateImg", "img ${resp.code} $target")
+        if (ru.mytolm.frgate.BuildConfig.DEBUG) android.util.Log.d("FRGateImg", "img ${resp.code} $target")
         if (!resp.isSuccessful) {
             resp.close()
             return SourceFetchResult(ImageSource(Buffer(), FileSystem.SYSTEM), null, DataSource.NETWORK)

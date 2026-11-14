@@ -112,7 +112,7 @@ fun ReviewScreen(nav: NavHostController) {
                         val ids = items.map { it.id }
                         scope.launch {
                             val r = runCatching { appContainer.client.markViewed(ids) }
-                            android.util.Log.d("FRGateAccept", "ids=${ids.size} ok=${r.isSuccess} ${r.exceptionOrNull()?.message}")
+                            if (ru.mytolm.frgate.BuildConfig.DEBUG) android.util.Log.d("FRGateAccept", "ids=${ids.size} ok=${r.isSuccess} ${r.exceptionOrNull()?.message}")
                             if (r.isSuccess) appContainer.boxesHidden.value = true
                             refresh++
                         }

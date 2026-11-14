@@ -1,10 +1,24 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.plugin.serialization")
-    id("com.google.devtools.ksp")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
+
+// top10-9: versionName/versionCode из git (tag + число коммитов + sha), без внешних плагинов
+fun gitOut(vararg args: String): String = try {
+    val out = ByteArrayOutputStream()
+    exec { commandLine("git", "-C", rootProject.projectDir.absolutePath, *args); standardOutput = out }
+    out.toString().trim()
+} catch (_: Exception) { "" }
+
+val gitSha = gitOut("rev-parse", "--short", "HEAD")
+val gitCommits = gitOut("rev-list", "--count", "HEAD").toIntOrNull()
+val gitTag = gitOut("describe", "--tags", "--abbrev=0").removePrefix("v")
+val gitDirty = gitOut("status", "--porcelain").isNotEmpty()
 
 android {
     namespace = "ru.mytolm.frgate"
@@ -14,10 +28,21 @@ android {
         applicationId = "ru.mytolm.frgate"
         minSdk = 35
         targetSdk = 36
-        versionCode = 2
-        versionName = "2.0.0"
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+        // versionCode = число коммитов (монотонно); versionName = база 2.0.0 + git-метка
+        versionCode = gitCommits ?: 2
+        versionName = "2.0.0+" + listOfNotNull(
+            gitTag.ifBlank { null },
+            gitSha.takeIf { it.isNotBlank() }?.let { if (gitDirty) "$it-dirty" else it }
+        ).joinToString(".").ifBlank { "local" }
+    }
+
+    // top10-9: per-ABI APK вместо универсального — libwebrtc весит десятки МБ на ABI
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = false
         }
     }
 
@@ -42,47 +67,44 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.navigation:navigation-compose:2.8.5")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation(libs.core.ktx)
+    implementation(libs.activity.compose)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.navigation.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
 
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation(libs.okhttp)
+    implementation(libs.serialization.json)
+    implementation(libs.coroutines.android)
 
-    val media3 = "1.5.1"
-    implementation("androidx.media3:media3-exoplayer:$media3")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3")
-    implementation("androidx.media3:media3-ui:$media3")
-    implementation("androidx.media3:media3-datasource-okhttp:$media3")
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.datasource.okhttp)
 
-    val coil = "3.0.4"
-    implementation("io.coil-kt.coil3:coil-compose:$coil")
+    implementation(libs.coil.compose)
     // coil-network-okhttp не отдаёт классы на android-класспас (KMP metadata bug 3.0.4) — свой AuthHttpFetcher
 
-    implementation("androidx.security:security-crypto:1.1.0-alpha07")
+    implementation(libs.security.crypto)
 
-    val room = "2.6.1"
-    implementation("androidx.room:room-runtime:$room")
-    implementation("androidx.room:room-ktx:$room")
-    ksp("androidx.room:room-compiler:$room")
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
-    implementation("androidx.work:work-runtime-ktx:2.10.1")
+    implementation(libs.work.runtime.ktx)
 
     // Лёгкий WebRTC-клиент для go2rtc (экспериментальный live-режим, §3.2)
-    implementation("io.github.webrtc-sdk:android:125.6422.06")
+    implementation(libs.webrtc)
 
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    debugImplementation(libs.compose.ui.tooling)
 }

@@ -147,7 +147,7 @@ class FrigateClient(private val settings: ru.mytolm.frgate.data.SettingsStore) {
         val (code, body) = exec(Request.Builder().url(url(path)).build(), allowLogin)
         val err = mapError(code, body)
         if (err != null) {
-            android.util.Log.d("FRGateHttp", "GET $path -> $code ${body.take(120)}")
+            if (ru.mytolm.frgate.BuildConfig.DEBUG) android.util.Log.d("FRGateHttp", "GET $path -> $code ${body.take(120)}")
             throw httpError(code, body)
         }
         return json.parseToJsonElement(body)
