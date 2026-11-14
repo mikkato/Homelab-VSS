@@ -43,6 +43,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalConfiguration
 
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.runtime.collectAsState
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -135,20 +138,22 @@ object Routes {
 class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_EVENT_ID = "frgate_event_id"
+        // F10: deep-link из onNewIntent живёт в StateFlow — Composable видит обновление без перемонтирования
+        val pendingEventId = MutableStateFlow<String?>(null)
     }
 
-    private var pendingEventId: String? = null
+    private val notifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* исход не критичен */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotifPermission()
         appContainer.ensureService()
+        intent?.getStringExtra(EXTRA_EVENT_ID)?.let { pendingEventId.value = it }
         setContent {
             FRGateTheme {
-                AppRoot(
-                    pendingEventId = remember { intent?.getStringExtra(EXTRA_EVENT_ID) }
-                )
+                AppRoot(pendingEventId = pendingEventId.collectAsState().value)
             }
         }
     }
@@ -156,15 +161,14 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(EXTRA_EVENT_ID)?.let { pendingEventId = it }
+        intent.getStringExtra(EXTRA_EVENT_ID)?.let { pendingEventId.value = it }
     }
 
     private fun requestNotifPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }
@@ -180,6 +184,7 @@ fun AppRoot(pendingEventId: String?) {
     LaunchedEffect(pendingEventId) {
         if (pendingEventId != null && configured) {
             nav.navigate(Routes.event(pendingEventId!!))
+            MainActivity.pendingEventId.value = null // не перемонтировать при возврате назад
         }
     }
 

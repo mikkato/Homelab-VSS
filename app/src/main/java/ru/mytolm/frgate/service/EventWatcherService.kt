@@ -419,10 +419,19 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWork
 }
 
 class BootReceiver : android.content.BroadcastReceiver() {
+    // top10-4 (P2): goAsync — зашифрованные prefs/Keystore читаются вне main-окна broadcaster
     override fun onReceive(context: Context, intent: Intent?) {
-        if (appContainer.settings.current.configured) {
-            EventWatcherService.ensure(context)
-            EventWatcherService.scheduleWatchdog(context)
+        val pending = goAsync()
+        val app = appContainer
+        app.scope.launch {
+            try {
+                if (app.settings.current.configured) {
+                    EventWatcherService.ensure(context)
+                    EventWatcherService.scheduleWatchdog(context)
+                }
+            } finally {
+                pending.finish()
+            }
         }
     }
 }

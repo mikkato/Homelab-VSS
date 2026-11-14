@@ -53,6 +53,16 @@ class FRGateApp : Application() {
     override fun onCreate() {
         super.onCreate()
         appContainer = AppContainer(this)
+        // top10-4 (P1/P3): прогрев Keystore/EncryptedSharedPreferences, БД и Coil-ImageLoader
+        // стартует до первого composition — main-поток не платит за генерацию master key.
+        // Lazy потокобезопасен: кто первый тронул — тот прогрет, но это уже фоновый поток.
+        appContainer.scope.launch(Dispatchers.IO) {
+            runCatching { appContainer.settings } // touch lazy: EncryptedSharedPreferences + master key
+        }
+        appContainer.scope.launch(Dispatchers.IO) {
+            runCatching { appContainer.db.openHelper.writableDatabase }
+            runCatching { appContainer.imageLoader }
+        }
         // настройки/БД/сервис — вне пути отрисовки первого кадра
         appContainer.scope.launch {
             if (appContainer.settings.current.configured) {
