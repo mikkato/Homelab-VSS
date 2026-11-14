@@ -22,6 +22,7 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
+import ru.mytolm.frgate.data.toFrigateEvent
 import ru.mytolm.frgate.frigate.FrigateEvent
 import ru.mytolm.frgate.util.TimeFmt
 
@@ -37,6 +38,7 @@ fun ExploreScreen(nav: NavHostController) {
     var exhausted by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var offline by remember { mutableStateOf(false) }
+    var fromCache by remember { mutableStateOf(false) }
     var semanticOff by remember { mutableStateOf(false) }
     var cameras by remember { mutableStateOf<List<String>>(emptyList()) }
     var labels by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -86,7 +88,7 @@ fun ExploreScreen(nav: NavHostController) {
                     query = query.ifBlank { null }
                 )
             }
-            if (reset) { events = list; offset = 60 } else {
+            if (reset) { events = list; offset = 60; fromCache = false } else {
                 events = events + list
                 offset += 60
             }
@@ -104,6 +106,11 @@ fun ExploreScreen(nav: NavHostController) {
             )
         } catch (e: Exception) {
             offline = true
+            // top10-1: при сетевой ошибке отдаём последние закэшированные события
+            try {
+                val cached = appContainer.db.eventDao().recentList(60).map { it.toFrigateEvent() }
+                if (cached.isNotEmpty()) { events = cached; fromCache = true }
+            } catch (_: Exception) { }
         }
         loading = false
     }
@@ -113,6 +120,7 @@ fun ExploreScreen(nav: NavHostController) {
     Scaffold(topBar = { ScreenHeader(stringResource(R.string.tab_explore)) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             OfflineBanner(offline)
+            CachedBadge(fromCache)
             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = query,

@@ -58,6 +58,8 @@ class FRGateApp : Application() {
             if (appContainer.settings.current.configured) {
                 appContainer.ensureService()
                 ru.mytolm.frgate.service.EventWatcherService.scheduleWatchdog(this@FRGateApp)
+                // top10-1 (L5): ежедневная ротация Room-кэша (deleteOlder)
+                ru.mytolm.frgate.data.CacheCleanup.maybeRun(this@FRGateApp, appContainer.db)
             }
         }
     }

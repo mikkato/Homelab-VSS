@@ -11,6 +11,8 @@
     <string name="retry">Повторить</string>
     <string name="loading">Загрузка…</string>
     <string name="offline_banner">Нет связи — показан кэш</string>
+    <string name="cached_badge">Из кэша</string>
+    <string name="cached_event_note">Событие из кэша: превью и видео появятся при связи с сервером</string>
     <string name="error_generic">Ошибка</string>
 
     <!-- Подключение -->

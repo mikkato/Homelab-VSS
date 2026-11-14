@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
 import ru.mytolm.frgate.data.LiveMode
+import ru.mytolm.frgate.data.toCameraInfo
 import ru.mytolm.frgate.frigate.CameraInfo
 import ru.mytolm.frgate.util.TimeFmt
 
@@ -56,13 +57,17 @@ import ru.mytolm.frgate.util.TimeFmt
 fun LiveScreen(nav: NavHostController) {
     val ctx = LocalContext.current
     val ws by appContainer.wsState.collectAsState()
+    val settings by appContainer.settings.state.collectAsState()
+    val boxesHidden by appContainer.boxesHidden.collectAsState()
     var cameras by remember { mutableStateOf<List<CameraInfo>>(emptyList()) }
     var offline by remember { mutableStateOf(false) }
+    var fromCache by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    // автомасштаб: портрет 2 колонки, ландшафт 4 — всегда 8 слотов
+    // автомасштаб: портрет — из настройки liveGridCols (F9), ландшафт 4 — всегда 8 слотов
     val config = LocalConfiguration.current
-    val gridCols = if (config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 4 else 2
+    val gridCols = if (config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 4
+    else settings.liveGridCols.coerceIn(1, 4)
     val totalSlots = 8
 
     // предпросмотр автообновляется каждые 10 с (TTL сетки по ТЗ)
@@ -78,13 +83,19 @@ fun LiveScreen(nav: NavHostController) {
             val cfg = appContainer.client.config()
             cameras = ru.mytolm.frgate.frigate.ConfigParse.cameras(cfg)
             offline = false
+            fromCache = false
             appContainer.db.cameraDao().upsert(
                 cameras.map {
                     ru.mytolm.frgate.data.CameraEntity(it.name, it.enabled, it.detectEnabled, it.recordEnabled, false)
                 }
             )
         } catch (e: Exception) {
+            // top10-1: сеть легла — читаем кэш камер из Room
             offline = true
+            try {
+                val cached = appContainer.db.cameraDao().allList().map { it.toCameraInfo() }
+                if (cached.isNotEmpty()) { cameras = cached; fromCache = true }
+            } catch (_: Exception) { }
         }
     }
 
@@ -128,6 +139,7 @@ fun LiveScreen(nav: NavHostController) {
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             OfflineBanner(offline)
+            CachedBadge(fromCache)
             if (cameras.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (offline) Text(stringResource(R.string.offline_banner))
@@ -141,7 +153,7 @@ fun LiveScreen(nav: NavHostController) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(totalSlots) { i ->
+                    items(totalSlots, key = { it }) { i ->
                         if (i < cameras.size) {
                             val cam = cameras[i]
                             Column(
@@ -149,7 +161,7 @@ fun LiveScreen(nav: NavHostController) {
                                     .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
                                     .clickable { nav.navigate(Routes.camera(cam.name)) }
                             ) {
-                                CameraSnapshot(cam.name, tick, appContainer.boxesHidden.collectAsState().value)
+                                CameraSnapshot(cam.name, tick, boxesHidden)
                                 Text(
                                     cam.name,
                                     style = MaterialTheme.typography.labelLarge,

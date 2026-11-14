@@ -47,8 +47,14 @@ interface EventDao {
     @Query("SELECT * FROM events ORDER BY since DESC LIMIT :limit")
     fun recent(limit: Int): Flow<List<EventEntity>>
 
+    @Query("SELECT * FROM events ORDER BY since DESC LIMIT :limit")
+    suspend fun recentList(limit: Int): List<EventEntity>
+
     @Query("SELECT * FROM events WHERE id = :id")
     fun byId(id: String): Flow<EventEntity?>
+
+    @Query("SELECT * FROM events WHERE id = :id")
+    suspend fun byIdOnce(id: String): EventEntity?
 
     @Upsert
     suspend fun upsert(events: List<EventEntity>)
@@ -61,6 +67,9 @@ interface EventDao {
 interface ReviewDao {
     @Query("SELECT * FROM reviews ORDER BY thumbTime DESC LIMIT :limit")
     fun recent(limit: Int): Flow<List<ReviewEntity>>
+
+    @Query("SELECT * FROM reviews ORDER BY thumbTime DESC LIMIT :limit")
+    suspend fun recentList(limit: Int): List<ReviewEntity>
 
     @Upsert
     suspend fun upsert(reviews: List<ReviewEntity>)
@@ -76,6 +85,9 @@ interface ReviewDao {
 interface CameraDao {
     @Query("SELECT * FROM cameras ORDER BY name")
     fun all(): Flow<List<CameraEntity>>
+
+    @Query("SELECT * FROM cameras ORDER BY name")
+    suspend fun allList(): List<CameraEntity>
 
     @Upsert
     suspend fun upsert(cameras: List<CameraEntity>)

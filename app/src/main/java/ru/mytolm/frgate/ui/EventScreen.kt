@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
+import ru.mytolm.frgate.data.toFrigateEvent
 import ru.mytolm.frgate.frigate.FrigateEvent
 import ru.mytolm.frgate.util.TimeFmt
 import java.io.File
@@ -38,14 +39,23 @@ fun EventScreen(nav: NavHostController, eventId: String) {
     val ctx = LocalContext.current
     var ev by remember { mutableStateOf<FrigateEvent?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    var fromCache by remember { mutableStateOf(false) }
     var downloadState by remember { mutableStateOf<Pair<Float, File?>?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(eventId) {
         try {
             ev = appContainer.client.event(eventId)
+            fromCache = false
         } catch (e: Exception) {
-            err = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "http?")
+            // top10-1: карточка события из Room-кэша, если сети нет
+            val cached = try { appContainer.db.eventDao().byIdOnce(eventId) } catch (_: Exception) { null }
+            if (cached != null) {
+                ev = cached.toFrigateEvent()
+                fromCache = true
+            } else {
+                err = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "http?")
+            }
         }
     }
 
@@ -55,6 +65,12 @@ fun EventScreen(nav: NavHostController, eventId: String) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (err != null) Text(err!!, color = MaterialTheme.colorScheme.error)
+            CachedBadge(fromCache)
+            if (fromCache) Text(
+                stringResource(R.string.cached_event_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             val e = ev
             if (e == null && err == null) {
                 Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -158,10 +174,11 @@ fun EventScreen(nav: NavHostController, eventId: String) {
                         }
                     }
                 }
-                // Мини-таймлайн → Records на время события
+                // Мини-таймлайн → Records на время события (F11: ±5 мин, а не округлый час)
                 OutlinedButton(modifier = Modifier.fillMaxWidth().height(44.dp), onClick = {
-                    val s = (e.since.toLong() / 3600) * 3600
-                    nav.navigate(Routes.recordPlay(e.camera, s, s + 3600))
+                    val s = (e.since - 300).toLong()
+                    val end = ((e.end_time ?: (e.since + 1800)) + 300).toLong()
+                    nav.navigate(Routes.recordPlay(e.camera, s, end))
                 }) { Text(stringResource(R.string.ev_timeline), maxLines = 1, softWrap = false, fontSize = 13.sp) }
             }
         }

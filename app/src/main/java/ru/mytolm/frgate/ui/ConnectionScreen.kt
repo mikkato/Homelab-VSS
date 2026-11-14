@@ -2,6 +2,7 @@ package ru.mytolm.frgate.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -142,6 +143,25 @@ fun OfflineBanner(visible: Boolean) {
                 stringResource(R.string.offline_banner),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                 color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+    }
+}
+
+/** Бейдж «из кэша» (top10-1): данные показаны из Room, сеть недоступна. */
+@Composable
+fun CachedBadge(visible: Boolean) {
+    if (visible) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+        ) {
+            Text(
+                stringResource(R.string.cached_badge),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
     }

@@ -21,6 +21,8 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
+import ru.mytolm.frgate.data.toReviewSummary
+import ru.mytolm.frgate.data.toCameraInfo
 import ru.mytolm.frgate.frigate.ReviewSummary
 import ru.mytolm.frgate.util.TimeFmt
 
@@ -29,6 +31,7 @@ import ru.mytolm.frgate.util.TimeFmt
 fun ReviewScreen(nav: NavHostController) {
     var items by remember { mutableStateOf<List<ReviewSummary>>(emptyList()) }
     var offline by remember { mutableStateOf(false) }
+    var fromCache by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var camFilter by remember { mutableStateOf<String?>(null) }
     var cameras by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -44,6 +47,7 @@ fun ReviewScreen(nav: NavHostController) {
                 cameras = camFilter?.let { listOf(it) } ?: emptyList()
             ).filter { !it.viewed }
             offline = false
+            fromCache = false
             // есть непросмотренные -> рамки показать; все приняты -> снять (переживает перезапуск)
             appContainer.boxesHidden.value = items.none { !it.viewed }
             // офлайн-кэш
@@ -61,6 +65,15 @@ fun ReviewScreen(nav: NavHostController) {
         } catch (e: Exception) {
             android.util.Log.w("FRGateReview", "refresh failed", e)
             offline = true
+            // top10-1: фолбэк на кэш Room
+            try {
+                val cached = appContainer.db.reviewDao().recentList(100)
+                    .map { it.toReviewSummary() }
+                    .filter { r -> !r.viewed && (camFilter == null || r.camera == camFilter) }
+                if (cached.isNotEmpty()) { items = cached; fromCache = true }
+                val cachedCams = appContainer.db.cameraDao().allList().map { it.name }
+                if (cachedCams.isNotEmpty()) cameras = cachedCams
+            } catch (_: Exception) { }
         }
         loading = false
     }
@@ -89,6 +102,7 @@ fun ReviewScreen(nav: NavHostController) {
     }) { pad ->
         Column(Modifier.padding(pad)) {
             OfflineBanner(offline)
+            CachedBadge(fromCache)
             if (items.isNotEmpty()) {
                 Button(
                     onClick = {
