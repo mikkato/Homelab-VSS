@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.VideocamOff
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -267,7 +268,7 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
                         "cam fps ${f("camera_fps")} · det fps ${f("process_fps")}"
                     } catch (e: Exception) { errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "timeout") }
                 }
-            }) { Text("📊") }
+            }) { Icon(Icons.Outlined.Insights, contentDescription = stringResource(R.string.cd_stats)) }
         })
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -396,7 +397,8 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQua
             }) { Text(stringResource(label), maxLines = 1, softWrap = false, fontSize = 13.sp) }
             if (hasSub) {
                 OutlinedButton(modifier = Modifier.weight(1f).height(44.dp), onClick = onToggleQuality) {
-                    Text(if (quality == "high") "Высокое" else "Пониженное", maxLines = 1, softWrap = false, fontSize = 13.sp)
+                    Text(stringResource(if (quality == "high") R.string.quality_high else R.string.quality_sub),
+                        maxLines = 1, softWrap = false, fontSize = 13.sp)
                 }
             }
         }

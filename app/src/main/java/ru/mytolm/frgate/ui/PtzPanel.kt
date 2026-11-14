@@ -3,8 +3,17 @@ package ru.mytolm.frgate.ui
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.ZoomIn
+import androidx.compose.material.icons.outlined.ZoomOut
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -70,19 +79,19 @@ fun PtzPanel(camera: String, features: List<String>, presets: List<String>) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        HoldButton("↑") { send("UP") }
+                        HoldButton(Icons.Default.KeyboardArrowUp, R.string.cd_up, "UP") { send(it) }
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            HoldButton("←") { send("LEFT") }
-                            HoldButton("■") { send("STOP") }
-                            HoldButton("→") { send("RIGHT") }
+                            HoldButton(Icons.Default.KeyboardArrowLeft, R.string.cd_left, "LEFT") { send(it) }
+                            HoldButton(Icons.Default.Stop, R.string.cd_stop, "STOP") { send(it) }
+                            HoldButton(Icons.Default.KeyboardArrowRight, R.string.cd_right, "RIGHT") { send(it) }
                         }
-                        HoldButton("↓") { send("DOWN") }
+                        HoldButton(Icons.Default.KeyboardArrowDown, R.string.cd_down, "DOWN") { send(it) }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (features.any { it.contains("zoom", true) }) {
-                        HoldButton("＋") { send("ZOOM_IN") }
-                        HoldButton("－") { send("ZOOM_OUT") }
+                        HoldButton(Icons.Outlined.ZoomIn, R.string.cd_zoom_in, "ZOOM_IN") { send(it) }
+                        HoldButton(Icons.Outlined.ZoomOut, R.string.cd_zoom_out, "ZOOM_OUT") { send(it) }
                     }
                 }
             }
@@ -111,22 +120,26 @@ fun PtzPanel(camera: String, features: List<String>, presets: List<String>) {
     }
 }
 
-/** Кнопка-джойстик: при отпускании — STOP; при удержании — повтор ≤200 мс. */
+/**
+ * Кнопка-джойстик: при отпускании — STOP; при удержании — повтор ≤200 мс.
+ * top10-7: Material-иконки с contentDescription вместо ASCII-стрелок; cmd передаётся явно
+ * (раньше onCmd("STOP") вызывал колбэк с игнорируемым параметром — авто-STOP не отправлялся).
+ */
 @Composable
-private fun HoldButton(label: String, onCmd: (String) -> Unit) {
+private fun HoldButton(icon: ImageVector, @androidx.annotation.StringRes cdRes: Int, cmd: String, onCmd: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     OutlinedButton(
         onClick = {},
         modifier = Modifier
             .size(56.dp)
             .padding(0.dp)
-            .pointerInput(label) {
+            .pointerInput(cmd) {
                 awaitEachGesture {
                     awaitFirstDown()
                     var holding = true
                     val job = scope.launch {
                         while (holding) {
-                            onCmd(label)
+                            onCmd(cmd)
                             delay(200)
                         }
                     }
@@ -140,5 +153,5 @@ private fun HoldButton(label: String, onCmd: (String) -> Unit) {
                 }
             }
             .padding(4.dp)
-    ) { Text(label) }
+    ) { Icon(icon, contentDescription = stringResource(cdRes)) }
 }

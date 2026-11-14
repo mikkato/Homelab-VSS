@@ -8,6 +8,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -170,7 +173,7 @@ fun RecordsScreen(nav: NavHostController) {
                                 }
                                 busy = false
                             }
-                        }) { Text("⤓") }
+                        }) { Icon(Icons.Outlined.Download, contentDescription = stringResource(R.string.cd_download)) }
                         TextButton(onClick = {
                             scope.launch {
                                 try {
@@ -179,7 +182,7 @@ fun RecordsScreen(nav: NavHostController) {
                                 } catch (_: Exception) {
                                 }
                             }
-                        }) { Text("🗑") }
+                        }) { Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete)) }
                     }
                 }
             }

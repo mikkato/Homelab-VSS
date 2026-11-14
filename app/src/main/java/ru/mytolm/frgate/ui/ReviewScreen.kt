@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -202,7 +205,9 @@ private fun ReviewCard(rev: ReviewSummary, onClick: () -> Unit, onToggleViewed: 
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onToggleViewed) {
-                Text(if (rev.viewed) "✓" else "○")
+                Icon(if (rev.viewed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                    contentDescription = stringResource(if (rev.viewed) R.string.cd_mark_unviewed else R.string.cd_mark_viewed),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
             }
         }
     }

@@ -5,6 +5,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
@@ -64,8 +68,9 @@ fun ConnectionScreen(nav: NavHostController) {
             visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
-                TextButton(onClick = { showPass = !showPass }) {
-                    Text(if (showPass) "🙈" else "👁")
+                IconButton(onClick = { showPass = !showPass }) {
+                    if (showPass) Icon(Icons.Default.VisibilityOff, contentDescription = stringResource(R.string.cd_hide_password))
+                    else Icon(Icons.Default.Visibility, contentDescription = stringResource(R.string.cd_show_password))
                 }
             }
         )
@@ -123,7 +128,7 @@ fun ConnectionScreen(nav: NavHostController) {
     }
 }
 
-/** Общий хедер с кнопкой «назад» и заголовком. */
+/** Общий хедер с кнопкой «назад» и заголовком (top10-7: Material-иконка вместо «←», высота M3 64dp). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenHeader(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
@@ -131,11 +136,10 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)? = null, actions: @Composab
         title = { Text(title, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
         navigationIcon = {
             if (onBack != null) IconButton(onClick = onBack) {
-                Text("←", style = MaterialTheme.typography.titleLarge)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
             }
         },
         actions = actions,
-        modifier = androidx.compose.ui.Modifier.height(52.dp),
         windowInsets = androidx.compose.foundation.layout.WindowInsets(0),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
     )

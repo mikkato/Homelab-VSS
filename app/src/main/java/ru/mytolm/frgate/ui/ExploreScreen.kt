@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -132,6 +134,7 @@ fun ExploreScreen(nav: NavHostController) {
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { searchTick++ }),
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cd_search)) },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -174,7 +177,11 @@ fun ExploreScreen(nav: NavHostController) {
             }
             if (events.isEmpty() && !loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.rec_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // top10-7: пустое состояние объясняет действие, а не просто «нет данных»
+                    Text(
+                        stringResource(if (query.isBlank() && camFilter == null && labelFilter == null) R.string.search_empty_hint else R.string.rec_no_data),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
                 LazyVerticalGrid(

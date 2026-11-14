@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -199,6 +201,7 @@ private fun Section(title: String) {
 
 /** §3.7 настройки уведомлений: категории/классы/камеры/тихие часы. */
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun NotificationSettingsScreen(nav: NavHostController) {
     val s = appContainer.settings.state.collectAsState().value
     var labels by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -229,7 +232,7 @@ fun NotificationSettingsScreen(nav: NavHostController) {
             FlowRowWrap {
                 listOf("alarm" to R.string.cat_alarm, "detection" to R.string.cat_detection, "motion" to R.string.cat_motion)
                     .forEach { (cat, res) ->
-                        FilterChip(modifier = Modifier.height(40.dp), selected = s.notifCategories.contains(cat), onClick = {
+                        FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = s.notifCategories.contains(cat), onClick = {
                                 val cur = s.notifCategories.toMutableSet()
                                 if (cur.contains(cat)) cur.remove(cat) else cur.add(cat)
                                 appContainer.settings.update { it.copy(notifCategories = cur) }
@@ -240,7 +243,7 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 Text(stringResource(R.string.notif_filter_cameras), style = MaterialTheme.typography.titleSmall)
                 FlowRowWrap {
                     cameras.forEach { c ->
-                        FilterChip(modifier = Modifier.height(40.dp), selected = s.notifCameras.contains(c) || s.notifCameras.isEmpty(), onClick = {
+                        FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = s.notifCameras.contains(c) || s.notifCameras.isEmpty(), onClick = {
                             val cur = if (s.notifCameras.isEmpty()) cameras.toMutableSet() else s.notifCameras.toMutableSet()
                             if (cur.contains(c)) cur.remove(c) else cur.add(c)
                             if (cur.isEmpty() || cur.size == cameras.size) {
@@ -256,7 +259,7 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 Text(stringResource(R.string.notif_filter_labels), style = MaterialTheme.typography.titleSmall)
                 FlowRowWrap {
                     labels.forEach { l ->
-                        FilterChip(modifier = Modifier.height(40.dp), selected = s.notifLabels.contains(l) || s.notifLabels.isEmpty(), onClick = {
+                        FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = s.notifLabels.contains(l) || s.notifLabels.isEmpty(), onClick = {
                             val cur = if (s.notifLabels.isEmpty()) labels.toMutableSet() else s.notifLabels.toMutableSet()
                             if (cur.contains(l)) cur.remove(l) else cur.add(l)
                             appContainer.settings.update {
@@ -272,70 +275,66 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 else "%02d:%02d–%02d:%02d".format(s.quietFrom / 60, s.quietFrom % 60, s.quietTo / 60, s.quietTo % 60))
             }
             if (quietDlg) {
+                // top10-7: нативный M3 TimePicker вместо ручного «чч:мм» поля
+                var editingFrom by remember { mutableStateOf(true) }
                 var fromH by remember { mutableIntStateOf(if (s.quietFrom >= 0) s.quietFrom / 60 else 22) }
                 var fromM by remember { mutableIntStateOf(if (s.quietFrom >= 0) s.quietFrom % 60 else 0) }
                 var toH by remember { mutableIntStateOf(if (s.quietTo >= 0) s.quietTo / 60 else 7) }
                 var toM by remember { mutableIntStateOf(if (s.quietTo >= 0) s.quietTo % 60 else 0) }
-                AlertDialog(
-                    onDismissRequest = { quietDlg = false },
-                    title = { Text(stringResource(R.string.notif_quiet)) },
-                    text = {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.notif_quiet_from))
-                                NumberField("${"%02d".format(fromH)}:${"%02d".format(fromM)}") { h, m -> fromH = h; fromM = m }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.notif_quiet_to))
-                                NumberField("${"%02d".format(toH)}:${"%02d".format(toM)}") { h, m -> toH = h; toM = m }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            appContainer.settings.update {
-                                it.copy(quietFrom = fromH * 60 + fromM, quietTo = toH * 60 + toM)
-                            }
-                            quietDlg = false
-                        }) { Text(stringResource(R.string.save)) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = {
-                            appContainer.settings.update { it.copy(quietFrom = -1, quietTo = -1) }
-                            quietDlg = false
-                        }) { Text(stringResource(R.string.preset_all)) }
+                key(editingFrom) {
+                    val st = rememberTimePickerState(if (editingFrom) fromH else toH, if (editingFrom) fromM else toM, is24Hour = true)
+                    fun stash() {
+                        if (editingFrom) { fromH = st.hour; fromM = st.minute } else { toH = st.hour; toM = st.minute }
                     }
-                )
+                    AlertDialog(
+                        onDismissRequest = { quietDlg = false },
+                        title = { Text(stringResource(R.string.notif_quiet)) },
+                        text = {
+                            Column {
+                                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                    SegmentedButton(editingFrom, { stash(); editingFrom = true },
+                                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)) {
+                                        Text(stringResource(R.string.notif_quiet_from))
+                                    }
+                                    SegmentedButton(!editingFrom, { stash(); editingFrom = false },
+                                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)) {
+                                        Text(stringResource(R.string.notif_quiet_to))
+                                    }
+                                }
+                                TimePicker(state = st)
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                stash()
+                                appContainer.settings.update {
+                                    it.copy(quietFrom = fromH * 60 + fromM, quietTo = toH * 60 + toM)
+                                }
+                                quietDlg = false
+                            }) { Text(stringResource(R.string.save)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                appContainer.settings.update { it.copy(quietFrom = -1, quietTo = -1) }
+                                quietDlg = false
+                            }) { Text(stringResource(R.string.notif_quiet_off)) }
+                        }
+                    )
+                }
             }
         }
     }
 }
 
+/** Настоящий FlowRow (top10-7) вместо Column-заглушки: чипы переносятся, а не влезают в одну строку. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun FlowRowWrap(content: @Composable () -> Unit) {
-    // простая переноска без experimental FoundationFlowLayout
-    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        content()
-    }
-}
-
-@Composable
-private fun NumberField(value: String, onHm: (Int, Int) -> Unit) {
-    var txt by remember { mutableStateOf(value) }
-    OutlinedTextField(
-        value = txt, onValueChange = { t ->
-            txt = t
-            val m = Regex("(\\d{1,2}):(\\d{1,2})").find(t)
-            if (m != null) {
-                val h = m.groupValues[1].toIntOrNull() ?: 0
-                val mm = m.groupValues[2].toIntOrNull() ?: 0
-                if (h in 0..23 && mm in 0..59) onHm(h, mm)
-            }
-        },
-        singleLine = true,
-        modifier = Modifier.padding(start = 8.dp).width(110.dp),
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
-    )
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) { content() }
 }
 
 /** §3.8 Камеры: вкл/выкл, детекция, restream + сохранение/рестарт. */
@@ -492,7 +491,7 @@ fun AdminReviewScreen(nav: NavHostController) {
                             listOf("alarm", "detection", "motion").forEach { cat ->
                                 val on = cats.contains(cat) ||
                                     (cat == "detection" && cats.isEmpty()) // default в 0.17 — detection
-                                FilterChip(modifier = Modifier.height(40.dp), selected = on, onClick = {
+                                FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = on, onClick = {
                                     scope.launch {
                                         val next = if (on) cats - cat else cats + cat
                                         val key = when (cat) {
@@ -537,7 +536,7 @@ fun AdminUsersScreen(nav: NavHostController) {
 
     Scaffold(topBar = {
         ScreenHeader(stringResource(R.string.settings_users), onBack = { nav.popBackStack() }, actions = {
-            TextButton(onClick = { addDlg = true }) { Text("+") }
+            IconButton(onClick = { addDlg = true }) { Icon(Icons.Outlined.PersonAdd, contentDescription = stringResource(R.string.cd_add_user)) }
         })
     }) { pad ->
         Column(Modifier.padding(pad)) {
@@ -561,7 +560,7 @@ fun AdminUsersScreen(nav: NavHostController) {
                                         msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
                                 }
-                            }) { Text("role ⇄") }
+                            }) { Text(stringResource(R.string.settings_role)) }
                             TextButton(onClick = { pwdFor = u.username }) { Text(stringResource(R.string.settings_user_password)) }
                             // top10-5 (F5): удаление — только через подтверждение
                             IconButton(onClick = { confirmDeleteFor = u.username }) {
@@ -588,7 +587,7 @@ fun AdminUsersScreen(nav: NavHostController) {
                         singleLine = true, visualTransformation = PasswordVisualTransformation())
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("admin", "viewer").forEach { r ->
-                            FilterChip(modifier = Modifier.height(40.dp), selected = role == r, onClick = { role = r }, label = { Text(r) })
+                            FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = role == r, onClick = { role = r }, label = { Text(r) })
                         }
                     }
                 }
@@ -743,8 +742,8 @@ fun LogsScreen(nav: NavHostController) {
     Scaffold(topBar = { ScreenHeader(stringResource(R.string.settings_logs), onBack = { nav.popBackStack() }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(modifier = Modifier.height(40.dp), selected = source == "frigate", onClick = { source = "frigate" }, label = { Text(stringResource(R.string.log_frigate)) })
-                FilterChip(modifier = Modifier.height(40.dp), selected = source == "go2rtc", onClick = { source = "go2rtc" }, label = { Text(stringResource(R.string.log_go2rtc)) })
+                FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "frigate", onClick = { source = "frigate" }, label = { Text(stringResource(R.string.log_frigate)) })
+                FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "go2rtc", onClick = { source = "go2rtc" }, label = { Text(stringResource(R.string.log_go2rtc)) })
                 TextButton(onClick = {
                     scope.launch {
                         try { text = appContainer.client.logs(source) } catch (_: Exception) {
@@ -752,7 +751,9 @@ fun LogsScreen(nav: NavHostController) {
                     }
                 }) { Text(stringResource(R.string.retry)) }
             }
-            OutlinedTextField(query, { query = it }, placeholder = { Text("🔍") }, singleLine = true,
+            OutlinedTextField(query, { query = it }, singleLine = true,
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cd_search)) },
+                placeholder = { Text(stringResource(R.string.log_search_hint)) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
             err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
             val filtered = if (query.isBlank()) text else text.lines().filter { it.contains(query, true) }.joinToString("\n")
