@@ -32,3 +32,10 @@
 # media3 DefaultMediaSourceFactory грузит фабрики плейлистов рефлексией по имени класса
 -keep class androidx.media3.exoplayer.hls.** { *; }
 -keep class androidx.media3.exoplayer.dash.** { *; }
+
+# release: вырезать отладочные логи целиком (v/d/i; warn/error остаются)
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
