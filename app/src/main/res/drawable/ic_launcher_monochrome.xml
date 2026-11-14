@@ -3,85 +3,44 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!--
-      Foreground адаптивной иконки «Homelab VSS»: контур щита + объектив камеры
-      с диафрагмой (кольцевые лепестки). Белый #F8FAFC.
-      Значимая область вписана в центральный круг 66dp (r=33 вокруг 54,54).
-      Кольцо лепестков 18..24 от центра, корпус объектива r=28.
-    -->
-    <group>
-        <!-- Контур щита -->
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="3.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M54,23 L77.5,31.5 L77.5,52 C77.5,67.5 68,78.5 54,85 C40,78.5 30.5,67.5 30.5,52 L30.5,31.5 Z"/>
-        <!-- Корпус объектива -->
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="3"
-            android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0"/>
-        <!-- Внешнее кольцо диафрагмы -->
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:pathData="M54,54m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0"/>
-        <!-- Лепестки диафрагмы: хорды, касающиеся внутреннего круга r=12 -->
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M55.65,30.08 L74.35,40.92"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M77.92,55.65 L67.08,74.35"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M52.35,77.92 L33.65,67.08"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M30.08,52.35 L40.92,33.65"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M67.08,33.65 L67.08,55.65"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M74.35,67.08 L52.35,67.08"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M40.92,74.35 L40.92,52.35"/>
-        <path
-            android:fillColor="#00000000"
-            android:strokeColor="#F8FAFC"
-            android:strokeWidth="2"
-            android:strokeLineCap="round"
-            android:pathData="M33.65,40.92 L55.65,40.92"/>
-        <!-- Зрачок -->
-        <path
-            android:fillColor="#F8FAFC"
-            android:pathData="M54,54m-4.5,0a4.5,4.5 0,1 1,9 0a4.5,4.5 0,1 1,-9 0"/>
-    </group>
+    <!-- Monochrome-слой «Homelab VSS» для themed icons: силуэт без перекрытий. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M56,30 L56,41" />
+    <!-- видимая внешняя половина заднего торца -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:pathData="M63.58,35.23 A17,8.5 60.3 1 1 80.42,64.77" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M63.4,35 L35.4,51" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M80.6,65 L52.6,81" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:pathData="M52.42,80.77 A17,8.5 60.3 0 1 1 35.58,51.23 A17,8.5 60.3 0 1 1 52.42,80.77 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:pathData="M49.2,75.12 A10.5,5.2 60.3 0 1 1 38.8,56.88 A10.5,5.2 60.3 0 1 1 49.2,75.12 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46.6,66 A2.6,2.6 0 1 1 41.4,66 A2.6,2.6 0 1 1 46.6,66 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68.1,59 A2.1,2.1 0 1 1 63.9,59 A2.1,2.1 0 1 1 68.1,59 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2"
+        android:strokeLineJoin="round"
+        android:pathData="M45,26 L56,19.8 L67,26 L56,32.2 Z" />
 </vector>
