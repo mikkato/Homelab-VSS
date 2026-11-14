@@ -5,6 +5,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,12 +34,15 @@ import ru.mytolm.frgate.frigate.UserInfo
 @Composable
 fun SettingsScreen(nav: NavHostController) {
     val s = appContainer.settings.state.collectAsState().value
+    val role by appContainer.userRole.collectAsState()
     var version by remember { mutableStateOf<String?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    var confirmRestart by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         version = try { appContainer.client.version() } catch (e: Exception) { null }
+        appContainer.refreshRole() // top10-5 (F6)
     }
 
     Scaffold(topBar = { ScreenHeader(stringResource(R.string.tab_settings)) }) { pad ->
@@ -134,35 +141,54 @@ fun SettingsScreen(nav: NavHostController) {
             Section(stringResource(R.string.settings_notifications))
             OutlinedButton(onClick = { nav.navigate(Routes.S_NOTIF) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_notifications), maxLines = 1, softWrap = false) }
 
-            // --- Администрирование ---
-            Section(stringResource(R.string.settings_admin))
-            OutlinedButton(onClick = { nav.navigate(Routes.S_CAMERAS) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_cameras))
-            }
-            OutlinedButton(onClick = { nav.navigate(Routes.S_OBJECTS) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_objects))
-            }
-            OutlinedButton(onClick = { nav.navigate(Routes.S_REVIEW) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_review_settings))
-            }
-            OutlinedButton(onClick = { nav.navigate(Routes.S_USERS) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_users))
-            }
-            OutlinedButton(onClick = { nav.navigate(Routes.S_SYSTEM) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_system))
-            }
-            OutlinedButton(onClick = { nav.navigate(Routes.S_LOGS) }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_logs))
-            }
-            OutlinedButton(onClick = {
-                scope.launch {
-                    try { appContainer.client.restart() } catch (e: Exception) { err = "badgateway" }
+            // --- Администрирование (top10-5 F6: скрываем для роли viewer) ---
+            if (role != "viewer") {
+                Section(stringResource(R.string.settings_admin))
+                OutlinedButton(onClick = { nav.navigate(Routes.S_CAMERAS) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_cameras))
                 }
-            }, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.settings_restart))
+                OutlinedButton(onClick = { nav.navigate(Routes.S_OBJECTS) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_objects))
+                }
+                OutlinedButton(onClick = { nav.navigate(Routes.S_REVIEW) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_review_settings))
+                }
+                OutlinedButton(onClick = { nav.navigate(Routes.S_USERS) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_users))
+                }
+                OutlinedButton(onClick = { nav.navigate(Routes.S_SYSTEM) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_system))
+                }
+                OutlinedButton(onClick = { nav.navigate(Routes.S_LOGS) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_logs))
+                }
+                OutlinedButton(onClick = { confirmRestart = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.settings_restart))
+                }
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    // top10-5 (F5): рестарт NVR — только через подтверждение
+    if (confirmRestart) {
+        AlertDialog(
+            onDismissRequest = { confirmRestart = false },
+            title = { Text(stringResource(R.string.settings_restart)) },
+            text = { Text(stringResource(R.string.confirm_restart_text, s.baseUrl)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRestart = false
+                    scope.launch {
+                        try { appContainer.client.restart(); err = null }
+                        catch (e: Exception) { err = (e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "badgateway" }
+                    }
+                }) { Text(stringResource(R.string.settings_restart), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRestart = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 }
 
@@ -500,6 +526,7 @@ fun AdminUsersScreen(nav: NavHostController) {
     var msg by remember { mutableStateOf<String?>(null) }
     var addDlg by remember { mutableStateOf(false) }
     var pwdFor by remember { mutableStateOf<String?>(null) }
+    var confirmDeleteFor by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun load() {
@@ -535,16 +562,11 @@ fun AdminUsersScreen(nav: NavHostController) {
                                     }
                                 }
                             }) { Text("role ⇄") }
-                            TextButton(onClick = { pwdFor = u.username }) { Text("пароль") }
-                            TextButton(onClick = {
-                                scope.launch {
-                                    try {
-                                        appContainer.client.deleteUser(u.username)
-                                        load()
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                            }) { Text("🗑") }
+                            TextButton(onClick = { pwdFor = u.username }) { Text(stringResource(R.string.settings_user_password)) }
+                            // top10-5 (F5): удаление — только через подтверждение
+                            IconButton(onClick = { confirmDeleteFor = u.username }) {
+                                Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete))
+                            }
                         }
                     }
                 }
@@ -583,6 +605,31 @@ fun AdminUsersScreen(nav: NavHostController) {
                         }
                     }
                 }) { Text(stringResource(R.string.save)) }
+            }
+        )
+    }
+
+    if (confirmDeleteFor != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteFor = null },
+            title = { Text(stringResource(R.string.settings_users)) },
+            text = { Text(stringResource(R.string.confirm_delete_user_text, confirmDeleteFor!!)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = confirmDeleteFor!!
+                    confirmDeleteFor = null
+                    scope.launch {
+                        try {
+                            appContainer.client.deleteUser(name)
+                            load()
+                        } catch (e: Exception) {
+                            msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
+                        }
+                    }
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteFor = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

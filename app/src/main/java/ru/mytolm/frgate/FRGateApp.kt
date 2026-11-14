@@ -30,6 +30,20 @@ class AppContainer(val app: Application) {
 
     /** После «Принять» на Обзоре — снимать зелёные рамки со снапшотов до новых непросмотренных событий. */
     val boxesHidden = MutableStateFlow(false)
+
+    /** top10-5 (F6): роль из /api/profile (admin/viewer); null = неизвестно/сервер без auth. */
+    val userRole = MutableStateFlow<String?>(null)
+    suspend fun refreshRole() {
+        userRole.value = try {
+            val p = client.profile()
+            (p["role"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNullSafeStr()
+        } catch (_: Exception) {
+            userRole.value // 403/недоступно — не чиним UI догадками, оставляем как есть
+        }
+    }
+    private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafeStr(): String? =
+        if (isString) content else null
+
     fun setWsState(s: WsStatus) { _wsState.value = s }
 
     val imageLoader by lazy {

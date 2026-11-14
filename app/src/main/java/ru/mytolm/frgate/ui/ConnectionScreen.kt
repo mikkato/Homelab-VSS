@@ -85,6 +85,12 @@ fun ConnectionScreen(nav: NavHostController) {
                 status = null
                 okVersion = null
                 scope.launch {
+                    // F12: http:// упрётся в непонятную TLS-ошибку (cleartext запрещён) — говорим прямо
+                    if (!url.trim().startsWith("https://")) {
+                        status = "Поддерживается только https:// (нужен сертификат на сервере)"
+                        busy = false
+                        return@launch
+                    }
                     appContainer.settings.update {
                         it.copy(baseUrl = url.trim(), login = login.trim(), password = pass)
                     }

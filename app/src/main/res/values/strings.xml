@@ -145,6 +145,9 @@
     <string name="settings_system">Система</string>
     <string name="settings_logs">Логи</string>
     <string name="settings_restart">Перезапустить Frigate</string>
+    <string name="confirm_restart_text">Frigate на %1$s будет перезапущен: видеонаблюдение и записи пропадут примерно на минуту. Продолжить?</string>
+    <string name="confirm_delete_user_text">Удалить пользователя Frigate «%1$s»? Действие необратимо.</string>
+    <string name="settings_user_password">пароль</string>
     <string name="settings_saved">Сохранено</string>
     <string name="settings_save_failed">Не сохранено: %1$s</string>
     <string name="role_admin">Администратор</string>
