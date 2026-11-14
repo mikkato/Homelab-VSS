@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.VideocamOff
 import androidx.compose.ui.draw.clip
@@ -219,8 +221,28 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
     var ptzPresets by remember { mutableStateOf<List<String>>(emptyList()) }
     var hasSub by remember { mutableStateOf(false) }
     var quality by remember { mutableStateOf("high") }
+    // top10-8: полноэкранный просмотр — без шапки/PTZ, системные панели скрыты, экран не гаснет
+    var fullscreen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
+    val composeView = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(fullscreen) {
+        val window = (composeView.context as? android.app.Activity)?.window
+        val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, composeView) }
+        if (fullscreen) {
+            window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            controller?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            controller?.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+    }
     val kb = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(camera) {
@@ -241,10 +263,14 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
         }
     }
 
-    BackHandler { nav.popBackStack() }
+    BackHandler { if (fullscreen) fullscreen = false else nav.popBackStack() }
 
     Scaffold(topBar = {
+        if (fullscreen) return@Scaffold
         ScreenHeader(camera, onBack = { nav.popBackStack() }, actions = {
+            IconButton(onClick = { fullscreen = true }) {
+                Icon(Icons.Outlined.Fullscreen, contentDescription = stringResource(R.string.cd_fullscreen))
+            }
             // переключатель способа трансляции в шапке камеры (§3.2)
             SingleChoiceSegmentedButtonRow {
                 SegmentedButton(
@@ -271,6 +297,18 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
             }) { Icon(Icons.Outlined.Insights, contentDescription = stringResource(R.string.cd_stats)) }
         })
     }) { pad ->
+        if (fullscreen) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                when (mode) {
+                    LiveMode.HTTP -> HttpLivePlayer(camera = camera, quality = if (quality == "sub" && hasSub) "sub" else "high", hasSub = hasSub, fullscreen = true, onToggleQuality = { quality = if (quality == "high") "sub" else "high" })
+                    LiveMode.WEBRTC -> WebRtcLivePlayer(camera = camera, fullscreen = true, onFallbackToHttp = { mode = LiveMode.HTTP })
+                }
+                IconButton(onClick = { fullscreen = false }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                    Icon(Icons.Outlined.FullscreenExit, contentDescription = stringResource(R.string.cd_exit_fullscreen), tint = Color.White)
+                }
+            }
+            return@Scaffold
+        }
         Column(Modifier.padding(pad).fillMaxSize()) {
             // предупреждение WebRTC (§3.2) — показывается при выборе режима
             if (mode == LiveMode.WEBRTC) {
@@ -313,7 +351,7 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
 
 /** HTTP live: прогрессивный fMP4 от go2rtc через ExoPlayer (аудио по умолчанию выкл). */
 @Composable
-fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQuality: () -> Unit) {
+fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, fullscreen: Boolean = false, onToggleQuality: () -> Unit) {
     var audioOn by remember { mutableStateOf(false) }
     val player = rememberAuthExoPlayer(live = true)
     androidx.compose.runtime.SideEffect { player.volume = if (audioOn) 1f else 0f }
@@ -361,9 +399,8 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQua
                     }
                 },
                 update = { it.player = player },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
+                modifier = (if (fullscreen) Modifier.fillMaxSize()
+                            else Modifier.fillMaxWidth().aspectRatio(16f / 9f))
                     .background(Color.Black)
             )
             if (!playing) {
@@ -390,6 +427,7 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQua
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (fullscreen) return@Row
             val label = if (audioOn) R.string.live_audio_off else R.string.live_audio_on
             OutlinedButton(modifier = Modifier.weight(1f).height(44.dp), onClick = {
                 audioOn = !audioOn
@@ -410,13 +448,13 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, onToggleQua
  * (host-candidate достаточно при прямом пробросе 8555). Нет первого кадра за 10 с → фолбэк HTTP.
  */
 @Composable
-fun WebRtcLivePlayer(camera: String, onFallbackToHttp: () -> Unit) {
+fun WebRtcLivePlayer(camera: String, fullscreen: Boolean = false, onFallbackToHttp: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var firstFrame by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
 
-    val eglBase = remember { EglBase.create() }
+    val eglBase = remember { ru.mytolm.frgate.webrtc.WebRtcEngine.eglBase() }
     val sinkProxy = remember {
         object : VideoSink {
             override fun onFrame(frame: VideoFrame) { firstFrame = true }
@@ -429,23 +467,16 @@ fun WebRtcLivePlayer(camera: String, onFallbackToHttp: () -> Unit) {
         }
     }
 
-    val factory = remember {
-        PeerConnectionFactory.initialize(
-            PeerConnectionFactory.InitializationOptions.builder(ctx).createInitializationOptions()
-        )
-        PeerConnectionFactory.builder()
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
-            .createPeerConnectionFactory()
-    }
+    // top10-8: фабрика libwebrtc одна на процесс
+    val factory = remember { ru.mytolm.frgate.webrtc.WebRtcEngine.getFactory(ctx) }
 
     var pc by remember { mutableStateOf<PeerConnection?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
             try { pc?.close() } catch (_: Exception) {}
-            try { factory.dispose() } catch (_: Exception) {}
+            // фабрику и общий EglBase не освобождаем — они живут до конца процесса (top10-8)
             surfaceView.release()
-            eglBase.release()
         }
     }
 
@@ -544,9 +575,8 @@ fun WebRtcLivePlayer(camera: String, onFallbackToHttp: () -> Unit) {
 
     AndroidView(
         factory = { surfaceView },
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
+        modifier = (if (fullscreen) Modifier.fillMaxSize()
+                    else Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             .background(Color.Black)
     )
     if (!firstFrame && !failed) {

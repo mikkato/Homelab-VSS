@@ -26,6 +26,8 @@
     <string name="cd_zoom_in">Приблизить</string>
     <string name="cd_zoom_out">Отдалить</string>
     <string name="notif_quiet_off">Выключить</string>
+    <string name="cd_fullscreen">Полноэкранный режим</string>
+    <string name="cd_exit_fullscreen">Выйти из полноэкранного режима</string>
     <string name="settings_role">Сменить роль</string>
     <string name="log_search_hint">Поиск по логам</string>
     <string name="search_empty_hint">Введите запрос или выберите фильтры</string>
