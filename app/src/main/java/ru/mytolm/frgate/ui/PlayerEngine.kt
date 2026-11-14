@@ -25,7 +25,9 @@ fun rememberAuthExoPlayer(live: Boolean = false): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBufferDurationsMs(
-                if (live) 1_500 else DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                // invariant media3: bufferForPlayback <= afterRebuffer <= min <= max
+                // (min=1500 < afterRebuffer=2000 ронял Builder() на каждом входе в камеру)
+                if (live) 2_500 else DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
                 if (live) 6_000 else DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
                 if (live) 1_000 else DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
                 if (live) 2_000 else DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
