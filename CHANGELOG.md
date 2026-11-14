@@ -1,0 +1,41 @@
+# Homelab VSS — журнал релизов
+
+## 2.0.3 (vc 18) — фикс краха при открытии камеры
+Live-настройки `DefaultLoadControl` нарушали инвариант media3
+(`minBufferMs 1500 < bufferForPlaybackAfterRebufferMs 2000`):
+`ExoPlayer.Builder` кидал `IllegalArgumentException` на каждом тапе по камере —
+приложение «сворачивалось на рабочий стол». `minBuffer` поднят до 2500 мс.
+Проверено на живом сервере: камера открывается, поток идёт.
+
+## 2.0.2 (vc 17) — гигиена релиза
+R8 `assumenosideeffects`: `Log.v/d/i` вырезаются из release-кода
+(warn/error остаются). Поведение не меняется.
+
+## 2.0.1 (vc 16) — починена иконка приложения
+Runtime-парсер VectorDrawable отбрасывает вектор целиком при эллиптических
+дугах `A` с `rx≠ry` и ненулевым поворотом — лаунчер показывал дефолтную
+заглушку. Эллипсы foreground/monochrome переведены на кубические Безье.
+Также в 2.0.x: прод-подпись (CN=Homelab VSS) вместо debug-ключа, `keep.xml`
+против вырезания launcher-ресурсов, отключён падающий lint-детектор
+`NullSafeMutableLiveData` (known issue lifecycle 2.9.x).
+
+## 2.0.0 (vc 15) — переименование и модернизация по аудиту
+Проект переименован: **FRGate → Homelab VSS** (label, README, root project;
+`applicationId`/пакет `ru.mytolm.frgate` не менялись). Новая адаптивная
+иконка: изометрическая камера видеонаблюдения.
+
+### Сделано по итогам аудита (top-10)
+- Room-кэш событий/кадров вместо write-only БД; офлайн-режим с баннером.
+- WebSocket-канал уведомлений вместо polling (было ~345k запросов/сутки).
+- Подтверждения и проверка роли на опасных admin-действиях; `config/set`
+  без строковой конкатенации.
+- Material icons вместо emoji; пауза плееров на ON_STOP; Keystore вне main-thread.
+- Единый `rememberAuthExoPlayer` вместо трёх копий; WebRTC-фабрика на процесс.
+- Vanilla ViewModel+StateFlow вместо side-effects в композиции; Material You
+  третьей палитрой; `libs.versions.toml`, ABI splits, versionCode из git.
+- Отладочные `Log.d` под `BuildConfig.DEBUG`.
+
+## 1.0–1.4 (as FRGate, vc 1–14, ноябрь 2026)
+Исторические релизы под именем **FRGate** по ТЗ `TZ_FRGATE_v1.md`: клиент
+Frigate 0.17 — live-потоки (HTTP/go2rtc WebRTC), события/архив/поиск,
+push-уведомления, админ-разделы. Подпись debug-ключом (исправлено в 2.0.x).
