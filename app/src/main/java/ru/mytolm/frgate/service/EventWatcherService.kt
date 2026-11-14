@@ -267,7 +267,7 @@ class EventWatcherService : android.app.Service() {
             NotificationChannel(CHANNEL_ALARM, getString(R.string.notif_channel_alarm), NotificationManager.IMPORTANCE_HIGH),
             NotificationChannel(CHANNEL_DETECTION, getString(R.string.notif_channel_detection), NotificationManager.IMPORTANCE_DEFAULT),
             NotificationChannel(CHANNEL_MOTION, getString(R.string.notif_channel_motion), NotificationManager.IMPORTANCE_LOW),
-            NotificationChannel(CHANNEL_STATUS, "FRGate", NotificationManager.IMPORTANCE_MIN).apply {
+            NotificationChannel(CHANNEL_STATUS, getString(R.string.app_name), NotificationManager.IMPORTANCE_MIN).apply {
                 setShowBadge(false)
             }
         )

@@ -266,14 +266,26 @@ fun MainPager(nav: NavHostController, pager: androidx.compose.foundation.pager.P
         R.string.tab_records, R.string.tab_settings
     )
     Column(Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(R.drawable.logo_frgate_banner),
-            contentDescription = "FRGate",
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier
+        // Бренд-строка (векторная иконка-щит + имя): PNG-баннер убран при rebrand
+        Row(
+            Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        )
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_launcher_foreground),
+                contentDescription = stringResource(R.string.app_name),
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(30.dp)
+            )
+            Text(
+                stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
         HorizontalPager(state = pager, modifier = Modifier.weight(1f)) { p ->
             when (p) {
                 0 -> LiveScreen(nav)

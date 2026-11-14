@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "FRGate"
+rootProject.name = "Homelab-VSS"
 include(":app")
