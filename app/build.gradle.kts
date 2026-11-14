@@ -75,6 +75,11 @@ android {
             else signingConfigs.getByName("debug")
         }
     }
+    lint {
+        // known issue: детектор androidx.lifecycle NullSafeMutableLiveData падает
+        // с IncompatibleClassChangeError (конфликт версий lint/lifecycle 2.9.x)
+        disable += "NullSafeMutableLiveData"
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
