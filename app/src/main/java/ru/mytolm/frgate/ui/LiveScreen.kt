@@ -51,7 +51,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
 import ru.mytolm.frgate.data.LiveMode
-import ru.mytolm.frgate.data.toCameraInfo
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.mytolm.frgate.frigate.CameraInfo
 import ru.mytolm.frgate.util.TimeFmt
 
@@ -62,11 +63,13 @@ fun LiveScreen(nav: NavHostController) {
     val ws by appContainer.wsState.collectAsState()
     val settings by appContainer.settings.state.collectAsState()
     val boxesHidden by appContainer.boxesHidden.collectAsState()
-    var cameras by remember { mutableStateOf<List<CameraInfo>>(emptyList()) }
-    var offline by remember { mutableStateOf(false) }
-    var fromCache by remember { mutableStateOf(false) }
+    // top10-10: список камер и офлайн-фолбэк — в LiveViewModel (StateFlow)
+    val vm: LiveViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val st by vm.state.collectAsStateWithLifecycle()
     var tick by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
+    val cameras = st.cameras
+    val offline = st.offline
+    val fromCache = st.fromCache
     // автомасштаб: портрет — из настройки liveGridCols (F9), ландшафт 4 — всегда 8 слотов
     val config = LocalConfiguration.current
     val gridCols = if (config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 4
@@ -81,28 +84,8 @@ fun LiveScreen(nav: NavHostController) {
         }
     }
 
-    suspend fun loadCams() {
-        try {
-            val cfg = appContainer.client.config()
-            cameras = ru.mytolm.frgate.frigate.ConfigParse.cameras(cfg)
-            offline = false
-            fromCache = false
-            appContainer.db.cameraDao().upsert(
-                cameras.map {
-                    ru.mytolm.frgate.data.CameraEntity(it.name, it.enabled, it.detectEnabled, it.recordEnabled, false)
-                }
-            )
-        } catch (e: Exception) {
-            // top10-1: сеть легла — читаем кэш камер из Room
-            offline = true
-            try {
-                val cached = appContainer.db.cameraDao().allList().map { it.toCameraInfo() }
-                if (cached.isNotEmpty()) { cameras = cached; fromCache = true }
-            } catch (_: Exception) { }
-        }
-    }
+    LaunchedEffect(Unit) { vm.refresh() }
 
-    LaunchedEffect(Unit) { loadCams() }
 
     // обновление миниатюр и списка при активации приложения / возврате на экран
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -110,7 +93,7 @@ fun LiveScreen(nav: NavHostController) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
             if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 tick++
-                scope.launch { loadCams() }
+                vm.refresh()
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)

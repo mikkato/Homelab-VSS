@@ -89,6 +89,25 @@ fun SettingsScreen(nav: NavHostController) {
                 }
             }
 
+            var paletteExpanded by remember { mutableStateOf(false) }
+            Box {
+                OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { paletteExpanded = true }) {
+                    Text(stringResource(R.string.settings_palette) + ": " + when (s.palette) {
+                        ru.mytolm.frgate.data.ThemePalette.PLAUD -> stringResource(R.string.palette_plaud)
+                        ru.mytolm.frgate.data.ThemePalette.DYNAMIC -> stringResource(R.string.palette_dynamic)
+                    }, maxLines = 1, softWrap = false)
+                }
+                DropdownMenu(paletteExpanded, onDismissRequest = { paletteExpanded = false }) {
+                    listOf(ru.mytolm.frgate.data.ThemePalette.PLAUD to R.string.palette_plaud,
+                           ru.mytolm.frgate.data.ThemePalette.DYNAMIC to R.string.palette_dynamic).forEach { (p, res) ->
+                        DropdownMenuItem(text = { Text(stringResource(res)) }, onClick = {
+                            appContainer.settings.update { it.copy(palette = p) }
+                            paletteExpanded = false
+                        })
+                    }
+                }
+            }
+
             // --- Live ---
             Section(stringResource(R.string.settings_live))
             var liveExpanded by remember { mutableStateOf(false) }

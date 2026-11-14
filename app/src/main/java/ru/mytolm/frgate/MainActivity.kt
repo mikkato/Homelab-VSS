@@ -87,7 +87,8 @@ private val PlaudDark = darkColorScheme(
 
 @Composable
 fun FRGateTheme(content: @Composable () -> Unit) {
-    val mode = appContainer.settings.state.collectAsState().value.theme
+    val settings = appContainer.settings.state.collectAsState().value
+    val mode = settings.theme
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -101,8 +102,14 @@ fun FRGateTheme(content: @Composable () -> Unit) {
                 .isAppearanceLightStatusBars = !dark
         }
     }
+    // top10-10: третья опция палитры — динамические цвета Material You (рядом с Plaud)
+    val scheme = if (settings.palette == ru.mytolm.frgate.data.ThemePalette.DYNAMIC) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        if (dark) androidx.compose.material3.dynamicDarkColorScheme(ctx)
+        else androidx.compose.material3.dynamicLightColorScheme(ctx)
+    } else if (dark) PlaudDark else PlaudLight
     MaterialTheme(
-        colorScheme = if (dark) PlaudDark else PlaudLight,
+        colorScheme = scheme,
         shapes = Shapes(
             small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
             medium = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),

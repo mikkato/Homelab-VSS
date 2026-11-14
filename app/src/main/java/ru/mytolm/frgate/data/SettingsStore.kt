@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+/** Палитра (top10-10): фирменная Plaud или динамическая Material You. */
+enum class ThemePalette { PLAUD, DYNAMIC }
 enum class LiveMode { HTTP, WEBRTC }
 
 data class AppSettings(
@@ -17,6 +20,7 @@ data class AppSettings(
     val password: String = "",
     val configured: Boolean = false,
     val theme: ThemeMode = ThemeMode.SYSTEM,
+    val palette: ThemePalette = ThemePalette.PLAUD,
     val liveMode: LiveMode = LiveMode.HTTP,
     val liveGridCols: Int = 2,
     val lteAutoQuality: Boolean = true,
@@ -50,6 +54,7 @@ class SettingsStore(context: Context) {
             password = prefs.getString("password", "")!!,
             configured = prefs.getBoolean("configured", false),
             theme = runCatching { ThemeMode.valueOf(prefs.getString("theme", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
+            palette = runCatching { ThemePalette.valueOf(prefs.getString("palette", "PLAUD")!!) }.getOrDefault(ThemePalette.PLAUD),
             liveMode = runCatching { LiveMode.valueOf(prefs.getString("live_mode", "HTTP")!!) }.getOrDefault(LiveMode.HTTP),
             liveGridCols = prefs.getInt("grid_cols", 2),
             lteAutoQuality = prefs.getBoolean("lte_quality", true),
@@ -71,6 +76,7 @@ class SettingsStore(context: Context) {
             putString("password", next.password)
             putBoolean("configured", next.configured)
             putString("theme", next.theme.name)
+            putString("palette", next.palette.name)
             putString("live_mode", next.liveMode.name)
             putInt("grid_cols", next.liveGridCols)
             putBoolean("lte_quality", next.lteAutoQuality)

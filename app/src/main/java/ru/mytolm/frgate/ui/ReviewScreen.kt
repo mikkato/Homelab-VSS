@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -32,54 +33,12 @@ import ru.mytolm.frgate.util.TimeFmt
 /** §3.3 Review: лента с группировкой по времени, метки категорий, отметка прочитанного. */
 @Composable
 fun ReviewScreen(nav: NavHostController) {
-    var items by remember { mutableStateOf<List<ReviewSummary>>(emptyList()) }
-    var offline by remember { mutableStateOf(false) }
-    var fromCache by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(true) }
-    var camFilter by remember { mutableStateOf<String?>(null) }
-    var cameras by remember { mutableStateOf<List<String>>(emptyList()) }
-    var refresh by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(camFilter, refresh) {
-        loading = true
-        try {
-            val cfg = appContainer.client.config()
-            cameras = ru.mytolm.frgate.frigate.ConfigParse.cameras(cfg).map { it.name }
-            items = appContainer.client.review(
-                cameras = camFilter?.let { listOf(it) } ?: emptyList()
-            ).filter { !it.viewed }
-            offline = false
-            fromCache = false
-            // есть непросмотренные -> рамки показать; все приняты -> снять (переживает перезапуск)
-            appContainer.boxesHidden.value = items.none { !it.viewed }
-            // офлайн-кэш
-            appContainer.db.reviewDao().upsert(
-                items.map {
-                    ru.mytolm.frgate.data.ReviewEntity(
-                        id = it.id, camera = it.camera, thumbTime = it.thumbTime,
-                        severity = it.severity, viewed = it.viewed,
-                        mainEventId = it.mainEventId ?: "",
-                        labelsCsv = it.labels.distinct().joinToString(","),
-                        json = ""
-                    )
-                }
-            )
-        } catch (e: Exception) {
-            android.util.Log.w("FRGateReview", "refresh failed", e)
-            offline = true
-            // top10-1: фолбэк на кэш Room
-            try {
-                val cached = appContainer.db.reviewDao().recentList(100)
-                    .map { it.toReviewSummary() }
-                    .filter { r -> !r.viewed && (camFilter == null || r.camera == camFilter) }
-                if (cached.isNotEmpty()) { items = cached; fromCache = true }
-                val cachedCams = appContainer.db.cameraDao().allList().map { it.name }
-                if (cachedCams.isNotEmpty()) cameras = cachedCams
-            } catch (_: Exception) { }
-        }
-        loading = false
-    }
+    // top10-10: состояние и загрузка — в ReviewViewModel (StateFlow), экран только рисует
+    val vm: ReviewViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val st by vm.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { vm.refresh() }
+    val items = st.items
+    val cameras = st.cameras
 
     Scaffold(topBar = {
         ScreenHeader(stringResource(R.string.tab_review), actions = {
@@ -87,15 +46,15 @@ fun ReviewScreen(nav: NavHostController) {
                 var expanded by remember { mutableStateOf(false) }
                 Box {
                     TextButton(onClick = { expanded = true }) {
-                        Text(camFilter ?: stringResource(R.string.filter_camera))
+                        Text(st.camFilter ?: stringResource(R.string.filter_camera))
                     }
                     DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.preset_all)) }, onClick = {
-                            camFilter = null; expanded = false
+                            vm.setCamFilter(null); expanded = false
                         })
                         cameras.forEach { c ->
                             DropdownMenuItem(text = { Text(c) }, onClick = {
-                                camFilter = c; expanded = false
+                                vm.setCamFilter(c); expanded = false
                             })
                         }
                     }
@@ -104,23 +63,16 @@ fun ReviewScreen(nav: NavHostController) {
         })
     }) { pad ->
         Column(Modifier.padding(pad)) {
-            OfflineBanner(offline)
-            CachedBadge(fromCache)
+            OfflineBanner(st.offline)
+            CachedBadge(st.fromCache)
+            ErrorRetryBanner(st.error) { vm.refresh() }
             if (items.isNotEmpty()) {
                 Button(
-                    onClick = {
-                        val ids = items.map { it.id }
-                        scope.launch {
-                            val r = runCatching { appContainer.client.markViewed(ids) }
-                            if (ru.mytolm.frgate.BuildConfig.DEBUG) android.util.Log.d("FRGateAccept", "ids=${ids.size} ok=${r.isSuccess} ${r.exceptionOrNull()?.message}")
-                            if (r.isSuccess) appContainer.boxesHidden.value = true
-                            refresh++
-                        }
-                    },
+                    onClick = { vm.markAllViewed() },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
                 ) { Text(stringResource(R.string.accept_all)) }
             }
-            if (loading && items.isEmpty()) {
+            if (st.loading && items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (items.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -142,16 +94,7 @@ fun ReviewScreen(nav: NavHostController) {
                             ReviewCard(rev, onClick = {
                                 val evId = rev.mainEventId
                                 if (evId != null) nav.navigate(Routes.event(evId))
-                            }, onToggleViewed = {
-                                scope.launch {
-                                    try {
-                                        if (rev.viewed) appContainer.client.unmarkViewed(rev.id)
-                                        else appContainer.client.markViewed(listOf(rev.id))
-                                        refresh++
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                            })
+                            }, onToggleViewed = { vm.toggleViewed(rev) })
                         }
                     }
                 }

@@ -156,6 +156,9 @@
     <string name="theme_system">Системная</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
+    <string name="settings_palette">Палитра</string>
+    <string name="palette_plaud">Фирменная (Plaud)</string>
+    <string name="palette_dynamic">Динамическая (Material You)</string>
     <string name="settings_live">Живое видео</string>
     <string name="settings_live_mode">Способ трансляции по умолчанию</string>
     <string name="settings_lte_quality">Автокачество ≤720p в мобильной сети</string>

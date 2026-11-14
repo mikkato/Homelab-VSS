@@ -176,3 +176,20 @@ fun CachedBadge(visible: Boolean) {
         }
     }
 }
+
+/** top10-10: единый баннер ошибки с кнопкой «Повторить» (error/retry state экранов). */
+@Composable
+fun ErrorRetryBanner(error: String?, onRetry: () -> Unit) {
+    if (error.isNullOrBlank()) return
+    Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+        }
+    }
+}
