@@ -377,7 +377,7 @@ fun AdminCamerasScreen(nav: NavHostController) {
                             ToggleRow(stringResource(R.string.live_debug) + " detect", cam.detectEnabled) { on ->
                                 scope.launch {
                                     try {
-                                        appContainer.client.configSet(mapOf("cameras.${cam.name}.detect.enabled" to "$on"))
+                                        appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.detect.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(detectEnabled = on) }
                                         dirty = true
                                     } catch (_: Exception) {
@@ -387,7 +387,7 @@ fun AdminCamerasScreen(nav: NavHostController) {
                             ToggleRow("record", cam.recordEnabled) { on ->
                                 scope.launch {
                                     try {
-                                        appContainer.client.configSet(mapOf("cameras.${cam.name}.record.enabled" to "$on"))
+                                        appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.record.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(recordEnabled = on) }
                                         dirty = true
                                     } catch (_: Exception) {
@@ -397,7 +397,7 @@ fun AdminCamerasScreen(nav: NavHostController) {
                             ToggleRow("enabled", cam.enabled) { on ->
                                 scope.launch {
                                     try {
-                                        appContainer.client.configSet(mapOf("cameras.${cam.name}.enabled" to "$on"))
+                                        appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(enabled = on) }
                                         dirty = true
                                     } catch (_: Exception) {
@@ -448,7 +448,7 @@ fun AdminObjectsScreen(nav: NavHostController) {
                     scope.launch {
                         val next = if (enable) (tracked + label) else tracked - label
                         try {
-                            appContainer.client.configSet(mapOf("objects.track" to "[\"" + next.joinToString("\",\"") + "\"]"))
+                            appContainer.client.configSetTyped(mapOf("objects.track" to next))
                             tracked = next
                             msg = appContainer.app.getString(R.string.settings_saved)
                         } catch (e: Exception) {
@@ -500,9 +500,9 @@ fun AdminReviewScreen(nav: NavHostController) {
                                             "motion" -> "motion"
                                             else -> "detections"
                                         }
-                                        val payload = if (next.isEmpty()) "[\"all\"]" else "[\"" + next.joinToString("\",\"") + "\"]"
+                                        val payload: List<String> = if (next.isEmpty()) listOf("all") else next
                                         try {
-                                            appContainer.client.configSet(mapOf("cameras.$cam.review.$key" to payload))
+                                            appContainer.client.configSetTyped(mapOf("cameras.$cam.review.$key" to payload))
                                             reviewMap = reviewMap + (cam to next)
                                             appContainer.client.configSave()
                                         } catch (e: Exception) {

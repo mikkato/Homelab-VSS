@@ -111,21 +111,28 @@ class FrigateLogicTest {
 
     @Test
     fun `dot-path config map nests into config_data`() {
-        // воспроизводит логику FrigateClient.configSet(Map) без сети
-        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-        fun nest(obj: kotlinx.serialization.json.JsonObject, keys: List<String>, leaf: kotlinx.serialization.json.JsonElement): kotlinx.serialization.json.JsonObject =
-            kotlinx.serialization.json.buildJsonObject {
-                obj.forEach { (k, v) -> put(k, v) }
-                val k = keys.first()
-                put(k, if (keys.size == 1) leaf
-                    else nest((obj[k] as? kotlinx.serialization.json.JsonObject) ?: kotlinx.serialization.json.buildJsonObject { }, keys.drop(1), leaf))
-            }
+        // top10-6: тестируем саму ConfigNest (что использует FrigateClient.configSetTyped), а не копию
         var root = kotlinx.serialization.json.buildJsonObject { }
-        root = nest(root, listOf("cameras", "tapo_FYR", "detect", "enabled"), kotlinx.serialization.json.JsonPrimitive("true"))
-        root = nest(root, listOf("cameras", "tapo_FYR", "review", "alerts"), json.parseToJsonElement("[\"motion\"]"))
+        root = ru.mytolm.frgate.frigate.ConfigNest.nestPath(
+            root, listOf("cameras", "tapo_FYR", "detect", "enabled"),
+            ru.mytolm.frgate.frigate.ConfigNest.leafOf(true)
+        )
+        root = ru.mytolm.frgate.frigate.ConfigNest.nestPath(
+            root, listOf("cameras", "tapo_FYR", "review", "alerts"),
+            ru.mytolm.frgate.frigate.ConfigNest.leafOf(listOf("motion"))
+        )
         val cam = root["cameras"]!!.jsonObject["tapo_FYR"]!!.jsonObject
-        assertEquals(kotlinx.serialization.json.JsonPrimitive("true"), cam["detect"]!!.jsonObject["enabled"])
+        // F7: boolean остаётся boolean, а не строкой "true"
+        assertEquals(
+            kotlinx.serialization.json.JsonPrimitive(true),
+            cam["detect"]!!.jsonObject["enabled"]
+        )
         assertEquals("motion", cam["review"]!!.jsonObject["alerts"]!!.jsonArray[0].jsonPrimitive.content)
+        // кавычка/слэш в метке не ломают payload — экранирует kotlinx-сериализатор
+        val tricky = ru.mytolm.frgate.frigate.ConfigNest.leafOf(listOf("a\"b", "c\\d"))
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(tricky.toString()).jsonArray
+        assertEquals("a\"b", parsed[0].jsonPrimitive.content)
+        assertEquals("c\\d", parsed[1].jsonPrimitive.content)
     }
 
 }

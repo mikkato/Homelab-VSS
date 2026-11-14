@@ -71,14 +71,17 @@ fun ExploreScreen(nav: NavHostController) {
         loading = true
         try {
             val off = if (reset) 0 else offset
-            val page: List<FrigateEvent>? = if (query.isNotBlank() && reset) {
-                appContainer.client.search(query)
-            } else null
+            // top10-6 (F8): семантическая ветка пагинируется тем же offset; срабатывает только
+            // без фильтров камера/класс (у /events/search их нет) — иначе честный events(query=)
+            val filtersActive = camFilter != null || labelFilter != null
+            val page: List<FrigateEvent>? =
+                if (query.isNotBlank() && !filtersActive) appContainer.client.search(query, limit = 60, offset = off)
+                else null
             val list = if (page != null && page.isNotEmpty()) {
                 semanticOff = false
                 page
             } else {
-                if (query.isNotBlank() && page != null && page.isEmpty() && offset == 0) semanticOff = true
+                if (query.isNotBlank() && page != null && page.isEmpty() && off == 0) semanticOff = true
                 appContainer.client.events(
                     cameras = camFilter?.let { listOf(it) } ?: emptyList(),
                     labels = labelFilter?.let { listOf(it) } ?: emptyList(),

@@ -8,10 +8,12 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -212,26 +214,21 @@ class FrigateClient(private val settings: ru.mytolm.frgate.data.SettingsStore) {
             .let { (c, b) -> if (c in 200..299) json.parseToJsonElement(b).jsonObject else throw httpError(c, b) }
     }
 
-    /** dot-path («cameras.имя.detect.enabled») → вложенный config_data. Значения вида "[...]" парсятся как JSON-массивы. */
-    suspend fun configSet(paths: Map<String, String>) {
+    /**
+     * dot-path («cameras.имя.detect.enabled») → вложенный config_data.
+     * top10-6 (F7): значения типизированы — Boolean/Number/List<String>/String,
+     * payload собирается kotlinx-билдером (никакой строковой конкатенации).
+     */
+    suspend fun configSetTyped(paths: Map<String, Any?>) {
         var root = buildJsonObject { }
-        fun nest(obj: JsonObject, keys: List<String>, leaf: JsonElement): JsonObject = buildJsonObject {
-            obj.forEach { (k, v) -> put(k, v) }
-            val k = keys.first()
-            put(
-                k,
-                if (keys.size == 1) leaf
-                else nest((obj[k] as? JsonObject) ?: buildJsonObject { }, keys.drop(1), leaf)
-            )
-        }
         paths.forEach { (path, value) ->
-            val leaf: JsonElement = if (value.trimStart().startsWith("[")) {
-                try { json.parseToJsonElement(value) } catch (_: Exception) { JsonPrimitive(value) }
-            } else JsonPrimitive(value)
-            root = nest(root, path.split("."), leaf)
+            root = nestPath(root, path.split("."), ConfigNest.leafOf(value))
         }
         configSet(root)
     }
+
+    private fun nestPath(obj: JsonObject, keys: List<String>, leaf: JsonElement): JsonObject =
+        ConfigNest.nestPath(obj, keys, leaf)
 
     suspend fun configSave(): JsonObject = mutate("POST", "/api/config/save")
         .let { (c, b) -> if (c in 200..299) json.parseToJsonElement(b).jsonObject else throw httpError(c, b) }
@@ -437,6 +434,28 @@ class FrigateClient(private val settings: ru.mytolm.frgate.data.SettingsStore) {
 private fun String.encodeUrl(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
 private val JsonPrimitive.booleanOrNullSafe: Boolean? get() = booleanOrNull
+
+/** Типизированная вложенность dot-path → JsonObject (JVM-тестируемый; top10-6). */
+object ConfigNest {
+    fun nestPath(obj: JsonObject, keys: List<String>, leaf: JsonElement): JsonObject = buildJsonObject {
+        obj.forEach { (k, v) -> put(k, v) }
+        val k = keys.first()
+        put(
+            k,
+            if (keys.size == 1) leaf
+            else nestPath((obj[k] as? JsonObject) ?: buildJsonObject { }, keys.drop(1), leaf)
+        )
+    }
+
+    /** leaf из типизированного значения (F7): boolean/number/array остаются собой в JSON. */
+    fun leafOf(value: Any?): JsonElement = when (value) {
+        is Boolean -> JsonPrimitive(value)
+        is Number -> JsonPrimitive(value)
+        is List<*> -> buildJsonArray { value.forEach { add(JsonPrimitive(it?.toString() ?: "")) } }
+        null -> JsonNull
+        else -> JsonPrimitive(value.toString())
+    }
+}
 
 /** Чистый маппинг HTTP→слой авторизации (JVM-тестируемый, §7). */
 object FrigateClientMaps {
