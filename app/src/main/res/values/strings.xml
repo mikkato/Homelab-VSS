@@ -117,6 +117,7 @@
     <string name="notif_channel_detection">Детекции</string>
     <string name="notif_channel_motion">Движение</string>
     <string name="notif_service_title">Homelab VSS следит за камерами</string>
+    <string name="notif_burst_title">Новых событий: %1$d</string>
     <string name="settings_notifications">Уведомления</string>
     <string name="notif_enabled">Уведомления включены</string>
     <string name="notif_filter_cats">Категории</string>

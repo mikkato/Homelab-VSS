@@ -50,6 +50,7 @@ class EventWatcherService : android.app.Service() {
         app = appContainer
         createChannels()
         registerNetworkCallback()
+        registerScreenReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -88,36 +89,91 @@ class EventWatcherService : android.app.Service() {
         }
     }
 
-    // ---------- Polling (Frigate 0.17 не отдаёт WS за Basic-auth + JWT; polling проверен боем) ----------
+    // ---------- Адаптивный polling (top10-2) ----------
+    // Frigate 0.17 не отдаёт WS за Basic-auth + JWT; polling проверен боем.
+    // 5 с на экране / 60+ с в фоне; lastPollSec персистится; review — раз в 60 с.
 
     private val pollHandler by lazy { Handler(mainLooper) }
     private var lastPollSec = 0L
+    private var lastReviewMs = 0L
+    @Volatile private var screenOn = true
+    @Volatile private var pollingScheduled = false
+
+    private val runtimePrefs by lazy { getSharedPreferences("runtime", Context.MODE_PRIVATE) }
+
+    private fun currentIntervalMs(): Long = if (screenOn) POLL_INTERVAL_MS else POLL_INTERVAL_BG_MS
+
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val on = intent?.action == Intent.ACTION_SCREEN_ON
+            if (on == screenOn) return
+            screenOn = on
+            if (on) {
+                // экран включили — мгновенно подтянуть свежее, дальше быстрый шаг
+                pollHandler.removeCallbacksAndMessages(null)
+                pollOnce()
+            } else {
+                reschedule(currentIntervalMs())
+            }
+        }
+    }
+
+    private fun registerScreenReceiver() {
+        try {
+            screenOn = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
+            ContextCompat.registerReceiver(
+                this, screenReceiver,
+                android.content.IntentFilter().apply {
+                    addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
+                },
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun persistLastPoll() {
+        runtimePrefs.edit().putLong(KEY_LAST_POLL, lastPollSec).apply()
+    }
 
     private fun connect() {
         if (stopped) return
-        if (lastPollSec == 0L) lastPollSec = System.currentTimeMillis() / 1000 - 60
+        if (lastPollSec == 0L) {
+            // top10-2 (F3): восстановление точки опроса после рестарта сервиса — без повторов нотификаций
+            val saved = runtimePrefs.getLong(KEY_LAST_POLL, 0L)
+            lastPollSec = if (saved > 0) saved else System.currentTimeMillis() / 1000 - 60
+        }
         app.setWsState(WsStatus.CONNECTING)
+        if (pollingScheduled) return // F4: поллинг уже идёт — не пложим циклы
         pollOnce()
     }
 
     private fun pollOnce() {
         if (stopped) return
+        pollingScheduled = true
         scope.launch {
             try {
                 val list = app.client.events(since = lastPollSec, limit = 50)
                 reconnectDelaySec = 1.0
                 offlineSince = 0L
                 app.setWsState(WsStatus.CONNECTED)
+                val nowSec = System.currentTimeMillis() / 1000
+                val toNotify = mutableListOf<FrigateEvent>()
                 list.sortedBy { it.start_time }.forEach { ev ->
                     if (ev.start_time.toLong() > lastPollSec) lastPollSec = ev.start_time.toLong()
-                    try { onEvent(ev) } catch (_: Exception) { }
+                    try { onEvent(ev, nowSec, toNotify) } catch (_: Exception) { }
                 }
-                // зелёные рамки на плитках: снять, когда непросмотренных отзывов нет (§ «Принять»)
-                try {
-                    val reviews = app.client.review()
-                    app.boxesHidden.value = reviews.none { !it.viewed }
-                } catch (_: Exception) { }
-                reschedule(POLL_INTERVAL_MS)
+                persistLastPoll()
+                dispatchNotifications(toNotify)
+                // зелёные рамки на плитках: снимаем раз в 60 с (F2 — не каждый цикл)
+                if (System.currentTimeMillis() - lastReviewMs > REVIEW_INTERVAL_MS) {
+                    lastReviewMs = System.currentTimeMillis()
+                    try {
+                        val reviews = app.client.review()
+                        app.boxesHidden.value = reviews.none { !it.viewed }
+                    } catch (_: Exception) { }
+                }
+                reschedule(currentIntervalMs())
             } catch (_: Exception) {
                 scheduleReconnect()
             }
@@ -128,9 +184,9 @@ class EventWatcherService : android.app.Service() {
         if (stopped) return
         offlineSince = System.currentTimeMillis()
         app.setWsState(WsStatus.DISCONNECTED)
-        val delay = min(60.0, reconnectDelaySec)
+        val delay = maxOf(currentIntervalMs() / 1000.0, min(60.0, reconnectDelaySec))
         reconnectDelaySec = min(60.0, reconnectDelaySec * 2)
-        reschedule((delay * 1000).toLong().coerceAtLeast(POLL_INTERVAL_MS))
+        reschedule((delay * 1000).toLong().coerceAtLeast(5_000L))
     }
 
     private fun reschedule(ms: Long) {
@@ -142,7 +198,11 @@ class EventWatcherService : android.app.Service() {
     private fun handleMessage(raw: String) {
         when (val msg = WsParser.classify(raw)) {
             null -> { /* malformed / unknown topic — игнор, не падаем */ }
-            is WsParser.WsMsg.Event -> onEvent(msg.event)
+            is WsParser.WsMsg.Event -> {
+                val l = mutableListOf<FrigateEvent>()
+                onEvent(msg.event, System.currentTimeMillis() / 1000, l)
+                dispatchNotifications(l)
+            }
             is WsParser.WsMsg.CameraState -> scope.launch {
                 try {
                     app.db.cameraDao().upsert(
@@ -162,7 +222,7 @@ class EventWatcherService : android.app.Service() {
         }
     }
 
-    private fun onEvent(ev: FrigateEvent) {
+    private fun onEvent(ev: FrigateEvent, nowSec: Long, toNotify: MutableList<FrigateEvent>) {
         // Кэш события в Room (офлайн-просмотр последнего состояния)
         scope.launch {
             try {
@@ -181,9 +241,40 @@ class EventWatcherService : android.app.Service() {
             }
         }
         if (!passesFilter(ev)) return
+        // Анти-шторм (F3): не будить уведомлениями о том, что произошло давно (после офлайна/рестарта)
+        if (nowSec - ev.start_time.toLong() > NOTIFY_FRESH_SEC) return
         if (!lastNotifyIds.add(ev.id)) return
         if (lastNotifyIds.size > 500) lastNotifyIds = mutableSetOf(ev.id)
-        showNotification(ev)
+        toNotify.add(ev)
+    }
+
+    /** Кап залпа (F3): до 3 — individual, больше — одна сводная. */
+    private fun dispatchNotifications(list: List<FrigateEvent>) {
+        if (list.isEmpty()) return
+        if (list.size <= NOTIFY_CAP) {
+            list.forEach { showNotification(it) }
+        } else {
+            val tapIntent = PendingIntent.getActivity(
+                this, 0, Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            // NB: у InboxStyle есть метод-член apply(...) — он затеняет stdlib apply, поэтому без DSL
+            val style = NotificationCompat.InboxStyle()
+            list.take(5).forEach { ev ->
+                style.addLine("${ev.camera}: ${ev.label} · ${TimeFmt.hm(ev.since)}")
+            }
+            if (list.size > 5) style.addLine("…")
+            val n = NotificationCompat.Builder(this, CHANNEL_DETECTION)
+                .setSmallIcon(R.drawable.ic_stat_cam)
+                .setContentTitle(getString(R.string.notif_burst_title, list.size))
+                .setStyle(style)
+                .setAutoCancel(true)
+                .setContentIntent(tapIntent)
+                .build()
+            try { NotificationManagerCompat.from(this).notify(NOTIF_ID + 7, n) } catch (_: Exception) { }
+        }
     }
 
     private fun passesFilter(ev: FrigateEvent): Boolean {
@@ -276,6 +367,8 @@ class EventWatcherService : android.app.Service() {
 
     override fun onDestroy() {
         stopped = true
+        pollingScheduled = false
+        try { unregisterReceiver(screenReceiver) } catch (_: Exception) { }
         Handler(mainLooper).removeCallbacksAndMessages(null)
         scope.cancel()
         super.onDestroy()
@@ -287,7 +380,12 @@ class EventWatcherService : android.app.Service() {
         const val CHANNEL_ALARM = "frigate_alarm"
         const val CHANNEL_DETECTION = "frigate_detection"
         const val CHANNEL_MOTION = "frigate_motion"
-        const val POLL_INTERVAL_MS = 5000L
+        const val POLL_INTERVAL_MS = 5_000L      // экран включён (top10-2)
+        const val POLL_INTERVAL_BG_MS = 60_000L  // экран погашен
+        const val REVIEW_INTERVAL_MS = 60_000L
+        const val NOTIFY_FRESH_SEC = 120L        // анти-шторм: старше 2 мин — только в кэш
+        const val NOTIFY_CAP = 3                 // залп > 3 — одна сводная нотификация
+        const val KEY_LAST_POLL = "last_poll_sec"
         const val CHANNEL_STATUS = "frigate_status"
         const val NOTIF_ID = 1001
 
@@ -308,13 +406,12 @@ class EventWatcherService : android.app.Service() {
     }
 }
 
-/** Раз в 15 мин — проверка живости WS-сервиса (§3.7). */
+/** Раз в 15 мин — проверка живости сервиса (§3.7). F4: один ensure, только когда упало. */
 class WatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        if (appContainer.settings.current.configured) {
-            if (appContainer.wsState.value != WsStatus.CONNECTED) {
-                EventWatcherService.ensure(applicationContext)
-            }
+        if (appContainer.settings.current.configured &&
+            appContainer.wsState.value != WsStatus.CONNECTED
+        ) {
             EventWatcherService.ensure(applicationContext)
         }
         return Result.success()
