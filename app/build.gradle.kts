@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -19,6 +20,12 @@ val gitSha = gitOut("rev-parse", "--short", "HEAD")
 val gitCommits = gitOut("rev-list", "--count", "HEAD").toIntOrNull()
 val gitTag = gitOut("describe", "--tags", "--abbrev=0").removePrefix("v")
 val gitDirty = gitOut("status", "--porcelain").isNotEmpty()
+
+// top10-S2: прод-подпись из keystore.properties (gitignored); отсутствие = debug
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
 
 android {
     namespace = "ru.mytolm.frgate"
@@ -46,13 +53,26 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // debug-подпись: устанавливаемый релизный APK для замеров на эмуляторе
-            signingConfig = signingConfigs.getByName("debug")
+            // Прод-подпись: keystore.properties в корне (gitignored); без него — debug
+            signingConfig = if (keystoreProps.isNotEmpty())
+                signingConfigs.getByName("release")
+            else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
