@@ -153,7 +153,7 @@ fun JournalScreen(nav: NavHostController) {
                 vm.selectDate(d)
             }
             MonthGrid(st.month, counts, st.selected, onDay)
-            HorizontalDivider(Modifier.padding(top = 6.dp))
+            HorizontalDivider(Modifier.padding(top = 2.dp))
             DaySummary(st.selected, counts[st.selected] ?: 0, vm.eventsByDate(st.selected), nav, st.loading)
         }
     }
@@ -166,10 +166,10 @@ private fun MonthStrip(month: YearMonth, counts: Map<LocalDate, Int>, selected: 
         .format(month.atDay(1))
         .replaceFirstChar { it.uppercase() }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = { onShift(-1) }) {
+        IconButton(onClick = { onShift(-1) }, modifier = Modifier.size(40.dp)) {
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null)
         }
         Text(
@@ -178,7 +178,7 @@ private fun MonthStrip(month: YearMonth, counts: Map<LocalDate, Int>, selected: 
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
-        IconButton(onClick = { onShift(1) }) {
+        IconButton(onClick = { onShift(1) }, modifier = Modifier.size(40.dp)) {
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
         }
     }
@@ -192,6 +192,9 @@ private fun MonthGrid(month: YearMonth, counts: Map<LocalDate, Int>, selected: L
     val today = LocalDate.now()
     val first = month.atDay(1)
     val offset = first.dayOfWeek.value - 1 // Monday = 0
+    // Компактная сетка: только реально нужные недели, фиксированная высота ячейки —
+    // всё остальное место отдаём списку журнала
+    val weeks = ((offset + month.lengthOfMonth() + 6) / 7).coerceIn(4, 6)
     Column(Modifier.padding(horizontal = 8.dp)) {
         Row(Modifier.fillMaxWidth()) {
             WEEKDAYS.forEach {
@@ -204,7 +207,7 @@ private fun MonthGrid(month: YearMonth, counts: Map<LocalDate, Int>, selected: L
                 )
             }
         }
-        repeat(6) { week ->
+        repeat(weeks) { week ->
             Row(Modifier.fillMaxWidth()) {
                 repeat(7) { dow ->
                     val idx = (week * 7 + dow - offset).toLong()
@@ -216,7 +219,7 @@ private fun MonthGrid(month: YearMonth, counts: Map<LocalDate, Int>, selected: L
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .aspectRatio(1f)
+                            .height(30.dp)
                             .padding(1.dp)
                             .clip(CircleShape)
                             .background(
@@ -232,7 +235,8 @@ private fun MonthGrid(month: YearMonth, counts: Map<LocalDate, Int>, selected: L
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 if (inMonth) day.dayOfMonth.toString() else "",
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
+                                lineHeight = 15.sp,
                                 textAlign = TextAlign.Center,
                                 fontWeight = if (isToday || isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                 color = when {
@@ -242,7 +246,7 @@ private fun MonthGrid(month: YearMonth, counts: Map<LocalDate, Int>, selected: L
                                     else -> scheme.onSurfaceVariant
                                 }
                             )
-                            Box(Modifier.size(5.dp).padding(top = 1.dp).clip(CircleShape).background(
+                            Box(Modifier.size(3.dp).clip(CircleShape).background(
                                 if (inMonth && n > 0) {
                                     if (isSelected) scheme.onPrimary.copy(alpha = 0.9f) else scheme.secondary
                                 } else androidx.compose.ui.graphics.Color.Transparent
@@ -295,7 +299,7 @@ private fun DaySummary(date: LocalDate, dayCount: Int, events: List<FrigateEvent
                         Diag.log("tap.journalRow", "eventId=${e.id} date=$date time=${TimeFmt.hm(e.start_time)} subject=$subject")
                         Diag.traced("nav.journalToEvent") { nav.navigate(Routes.event(e.id)) }
                     }
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
