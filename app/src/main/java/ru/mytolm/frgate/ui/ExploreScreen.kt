@@ -26,6 +26,7 @@ import androidx.navigation.NavHostController
 import coil3.compose.AsyncImage
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
+import ru.mytolm.frgate.util.Diag
 
 /**
  * §3.5 Explore/поиск: семантический с fallback на events?query=, фильтры, бесконечная прокрутка.
@@ -61,9 +62,9 @@ fun ExploreScreen(nav: NavHostController) {
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                FilterChip(modifier = Modifier.height(40.dp), selected = st.camFilter == null, onClick = { vm.setCamFilter(null) }, label = { Text(stringResource(R.string.filter_camera) + ": " + (st.camFilter ?: stringResource(R.string.preset_all)), maxLines = 1, softWrap = false) })
+                FilterChip(modifier = Modifier.height(40.dp), selected = st.camFilter == null, onClick = { vm.setCamFilter(null) }, label = { Text(stringResource(R.string.filter_camera) + ": " + (st.camFilter?.let { ru.mytolm.frgate.util.camName(it) } ?: stringResource(R.string.preset_all)), maxLines = 1, softWrap = false) })
                 st.cameras.forEach { c ->
-                    FilterChip(modifier = Modifier.height(40.dp), selected = st.camFilter == c, onClick = { vm.setCamFilter(c) }, label = { Text(c, maxLines = 1, softWrap = false) })
+                    FilterChip(modifier = Modifier.height(40.dp), selected = st.camFilter == c, onClick = { vm.setCamFilter(c) }, label = { Text(ru.mytolm.frgate.util.camName(c), maxLines = 1, softWrap = false) })
                 }
             }
             Row(
@@ -116,15 +117,22 @@ fun ExploreScreen(nav: NavHostController) {
                     modifier = Modifier.fillMaxSize()
                 ) {
                     itemsIndexed(st.events, key = { _, e -> e.id }) { _, e ->
+                        val thumbUrl = appContainer.client.absoluteUrl("/api/events/${e.id}/thumbnail.jpg")
                         AsyncImage(
                             imageLoader = appContainer.imageLoader,
-                            model = appContainer.client.absoluteUrl("/api/events/${e.id}/thumbnail.jpg"),
+                            model = thumbUrl,
                             contentDescription = e.label,
                             contentScale = ContentScale.Crop,
+                            onError = { Diag.log("thumbnail.load.error", "eventId=${e.id} camera=${e.camera} url=${Diag.url(thumbUrl)}") },
                             modifier = Modifier
                                 .aspectRatio(1f)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { nav.navigate(Routes.event(e.id)) }
+                                .clickable {
+                                    Diag.log("tap.thumbnail", "eventId=${e.id} camera=${e.camera} label=${e.label} since=${e.since} duration=${e.duration}")
+                                    Diag.traced("nav.tap.exploreToEvent") {
+                                        nav.navigate(Routes.event(e.id))
+                                    }
+                                }
                         )
                     }
                 }

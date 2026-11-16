@@ -245,8 +245,9 @@ class ExploreViewModel : ViewModel() {
             }
             offset = off + 60
             _state.update {
+                val merged = if (reset) list else (it.events + list).distinctBy { e -> e.id }
                 it.copy(
-                    events = if (reset) list else it.events + list,
+                    events = merged,
                     exhausted = list.size < 60,
                     offline = false,
                     fromCache = false,

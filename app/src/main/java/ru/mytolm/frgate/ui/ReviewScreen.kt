@@ -28,6 +28,7 @@ import ru.mytolm.frgate.R
 import ru.mytolm.frgate.data.toReviewSummary
 import ru.mytolm.frgate.data.toCameraInfo
 import ru.mytolm.frgate.frigate.ReviewSummary
+import ru.mytolm.frgate.util.Diag
 import ru.mytolm.frgate.util.TimeFmt
 
 /** §3.3 Review: лента с группировкой по времени, метки категорий, отметка прочитанного. */
@@ -53,7 +54,7 @@ fun ReviewScreen(nav: NavHostController) {
                             vm.setCamFilter(null); expanded = false
                         })
                         cameras.forEach { c ->
-                            DropdownMenuItem(text = { Text(c) }, onClick = {
+                            DropdownMenuItem(text = { Text(ru.mytolm.frgate.util.camName(c)) }, onClick = {
                                 vm.setCamFilter(c); expanded = false
                             })
                         }
@@ -93,7 +94,10 @@ fun ReviewScreen(nav: NavHostController) {
                         items(group, key = { it.id }) { rev ->
                             ReviewCard(rev, onClick = {
                                 val evId = rev.mainEventId
-                                if (evId != null) nav.navigate(Routes.event(evId))
+                                Diag.log("tap.reviewCard", "reviewId=${rev.id} camera=${rev.camera} severity=${rev.severity} mainEventId=$evId")
+                                if (evId != null) Diag.traced("nav.tap.reviewToEvent") {
+                                    nav.navigate(Routes.event(evId))
+                                }
                             }, onToggleViewed = { vm.toggleViewed(rev) })
                         }
                     }
@@ -139,7 +143,7 @@ private fun ReviewCard(rev: ReviewSummary, onClick: () -> Unit, onToggleViewed: 
                         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(8.dp)) {}
                     }
                 }
-                Text(rev.camera, style = MaterialTheme.typography.bodyMedium)
+                Text(ru.mytolm.frgate.util.camName(rev.camera), style = MaterialTheme.typography.bodyMedium)
                 val labels = ru.mytolm.frgate.util.LabelsRu.labelsRu(rev.labels.distinct())
                 if (labels.isNotBlank()) {
                     Text(labels, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

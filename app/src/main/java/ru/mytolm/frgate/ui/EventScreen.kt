@@ -30,6 +30,7 @@ import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
 import ru.mytolm.frgate.data.toFrigateEvent
 import ru.mytolm.frgate.frigate.FrigateEvent
+import ru.mytolm.frgate.util.Diag
 import ru.mytolm.frgate.util.TimeFmt
 import java.io.File
 
@@ -44,15 +45,21 @@ fun EventScreen(nav: NavHostController, eventId: String) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(eventId) {
+        Diag.log("event.load.start", "eventId=$eventId")
         try {
             ev = appContainer.client.event(eventId)
             fromCache = false
+            Diag.log("event.load.ok", "eventId=$eventId camera=${ev?.camera} has_clip=${ev?.has_clip} has_snapshot=${ev?.has_snapshot} duration=${ev?.duration}")
         } catch (e: Exception) {
+            Diag.error("event.load.http", e, "eventId=$eventId")
             // top10-1: карточка события из Room-кэша, если сети нет
-            val cached = try { appContainer.db.eventDao().byIdOnce(eventId) } catch (_: Exception) { null }
+            val cached = try { appContainer.db.eventDao().byIdOnce(eventId) } catch (ce: Exception) {
+                Diag.error("event.load.cacheRead", ce, "eventId=$eventId"); null
+            }
             if (cached != null) {
                 ev = cached.toFrigateEvent()
                 fromCache = true
+                Diag.log("event.load.cached", "eventId=$eventId")
             } else {
                 err = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "http?")
             }
@@ -86,18 +93,20 @@ fun EventScreen(nav: NavHostController, eventId: String) {
                 }
                 // Snapshot
                 if (e.has_snapshot) {
+                    val snapUrl = appContainer.client.absoluteUrl("/api/events/${e.id}/snapshot.jpg")
                     AsyncImage(
                             imageLoader = appContainer.imageLoader,
-                        model = appContainer.client.absoluteUrl("/api/events/${e.id}/snapshot.jpg"),
+                        model = snapUrl,
                         contentDescription = "snapshot",
                         contentScale = ContentScale.FillWidth,
+                        onError = { Diag.log("snapshot.load.error", "eventId=${e.id} url=${Diag.url(snapUrl)}") },
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                     )
                 }
                 // Метаданные
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        MetaRow(stringResource(R.string.ev_camera), e.camera)
+                        MetaRow(stringResource(R.string.ev_camera), ru.mytolm.frgate.util.camName(e.camera))
                         MetaRow(stringResource(R.string.ev_objects), listOfNotNull(
                             ru.mytolm.frgate.util.LabelsRu.labelRu(e.label), e.sub_label
                         ).joinToString(" · "))
@@ -136,6 +145,7 @@ fun EventScreen(nav: NavHostController, eventId: String) {
                                 appContainer.client.setRetain(e.id, !e.retained)
                                 ev = e.copy(retained = !e.retained)
                             } catch (ex: Exception) {
+                                Diag.error("event.setRetain", ex, "eventId=${e.id}")
                             }
                         }
                     }, modifier = Modifier.weight(1f).height(44.dp)) {
@@ -147,7 +157,8 @@ fun EventScreen(nav: NavHostController, eventId: String) {
                                 val fp = !(e.false_positive ?: false)
                                 appContainer.client.setFalsePositive(e.id, fp)
                                 ev = e.copy(false_positive = fp)
-                            } catch (_: Exception) {
+                            } catch (ex: Exception) {
+                                Diag.error("event.setFalsePositive", ex, "eventId=${e.id}")
                             }
                         }
                     }) { Text(stringResource(R.string.ev_false_positive)) }
@@ -198,8 +209,23 @@ private fun MetaRow(k: String, v: String) {
 fun EventPlayer(url: String) {
     val player = rememberAuthExoPlayer()
     LaunchedEffect(url) {
-        player.setMediaItem(MediaItem.fromUri(url))
-        player.prepare()
+        Diag.log("player.clip.prepare", "url=${Diag.url(url)}")
+        try {
+            player.setMediaItem(MediaItem.fromUri(url))
+            player.prepare()
+        } catch (e: Exception) {
+            Diag.error("player.clip.prepare", e, "url=${Diag.url(url)}")
+            throw e
+        }
+    }
+    DisposableEffect(player) {
+        val l = object : androidx.media3.common.Player.Listener {
+            override fun onPlayerError(e: androidx.media3.common.PlaybackException) {
+                Diag.error("player.clip.error", e, "url=${Diag.url(url)} code=${e.errorCodeName}")
+            }
+        }
+        player.addListener(l)
+        onDispose { player.removeListener(l) }
     }
     AndroidView(
         factory = {

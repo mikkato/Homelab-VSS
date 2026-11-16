@@ -56,6 +56,14 @@
     <string name="tab_review">Обзор</string>
     <string name="tab_explore">Поиск</string>
     <string name="tab_records">Архив</string>
+    <string name="tab_journal">Журнал</string>
+    <string name="journal_no_events">В этот день событий нет</string>
+    <string name="journal_today">Сегодня</string>
+    <string name="journal_yesterday">Вчера</string>
+    <string name="alias_edit">Псевдоним камеры</string>
+    <string name="alias_title">Псевдоним · %1$s</string>
+    <string name="alias_hint">Отображаемое имя</string>
+    <string name="alias_note">Псевдоним виден только в приложении; на сервере камера остаётся «%1$s». Пустое значение сбрасывает псевдоним.</string>
     <string name="tab_settings">Настройки</string>
 
     <!-- Live -->

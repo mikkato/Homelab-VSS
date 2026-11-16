@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
 import ru.mytolm.frgate.data.LiveMode
+import ru.mytolm.frgate.util.Diag
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.mytolm.frgate.frigate.CameraInfo
@@ -145,11 +146,16 @@ fun LiveScreen(nav: NavHostController) {
                             Column(
                                 Modifier
                                     .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
-                                    .clickable { nav.navigate(Routes.camera(cam.name)) }
+                                    .clickable {
+                                        Diag.log("tap.cameraTile", "camera=${cam.name}")
+                                        Diag.traced("nav.tap.liveToCamera") {
+                                            nav.navigate(Routes.camera(cam.name))
+                                        }
+                                    }
                             ) {
                                 CameraSnapshot(cam.name, tick, boxesHidden)
                                 Text(
-                                    cam.name,
+                                    ru.mytolm.frgate.util.camName(cam.name),
                                     style = MaterialTheme.typography.labelLarge,
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -232,7 +238,8 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
         try {
             val streams = appContainer.client.go2rtcStreams()
             hasSub = streams.keys.any { it == "$camera-sub" }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Diag.error("camera.go2rtcStreams", e, "camera=$camera")
         }
         try {
             val info = appContainer.client.ptzInfo(camera)
@@ -242,7 +249,8 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
                 ptzPresets = (info["presets"] as? kotlinx.serialization.json.JsonArray)
                     ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: emptyList()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Diag.error("camera.ptzInfo", e, "camera=$camera")
         }
     }
 
@@ -250,7 +258,7 @@ fun CameraDetailScreen(nav: NavHostController, camera: String) {
 
     Scaffold(topBar = {
         if (fullscreen) return@Scaffold
-        ScreenHeader(camera, onBack = { nav.popBackStack() }, actions = {
+        ScreenHeader(ru.mytolm.frgate.util.camName(camera), onBack = { nav.popBackStack() }, actions = {
             IconButton(onClick = { fullscreen = true }) {
                 Icon(Icons.Outlined.Fullscreen, contentDescription = stringResource(R.string.cd_fullscreen))
             }
@@ -345,6 +353,7 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, fullscreen:
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onPlayerError(e: androidx.media3.common.PlaybackException) {
+                Diag.error("player.live.error", e, "errorCode=${e.errorCodeName}")
                 playError = e.errorCodeName
             }
         }
@@ -356,8 +365,14 @@ fun HttpLivePlayer(camera: String, quality: String, hasSub: Boolean, fullscreen:
         playError = null; retries = 0; playing = false
         val src = if (quality == "sub") "$camera-sub" else camera
         val url = appContainer.client.liveMp4Url(src)
-        player.setMediaItem(liveMediaItem(url, MimeTypes.APPLICATION_MP4))
-        player.prepare()
+        Diag.log("player.live.prepare", "camera=$camera src=$src url=${Diag.url(url)}")
+        try {
+            player.setMediaItem(liveMediaItem(url, MimeTypes.APPLICATION_MP4))
+            player.prepare()
+        } catch (e: Exception) {
+            Diag.error("player.live.prepare", e, "camera=$camera url=${Diag.url(url)}")
+            throw e
+        }
         // нет кадра 12 с — переподготавливаем (эмулятор/слабая сеть: декодер или буфер не поднялись)
         var startMs = android.os.SystemClock.elapsedRealtime()
         while (!playing && retries < 5) {
@@ -437,29 +452,43 @@ fun WebRtcLivePlayer(camera: String, fullscreen: Boolean = false, onFallbackToHt
     var firstFrame by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
 
-    val eglBase = remember { ru.mytolm.frgate.webrtc.WebRtcEngine.eglBase() }
+    val eglBase = runCatching { ru.mytolm.frgate.webrtc.WebRtcEngine.eglBase() }
+        .onFailure { Diag.error("webrtc.view.eglBase", it, "camera=$camera") }
+        .getOrThrow()
     val sinkProxy = remember {
         object : VideoSink {
             override fun onFrame(frame: VideoFrame) { firstFrame = true }
         }
     }
     val surfaceView = remember {
-        SurfaceViewRenderer(ctx).apply {
-            init(eglBase.eglBaseContext, null)
-            setEnableHardwareScaler(true)
-        }
+        Diag.marker("webrtc.surfaceView.init.before", "camera=$camera")
+        val v = runCatching {
+            SurfaceViewRenderer(ctx).apply {
+                init(eglBase.eglBaseContext, null)
+                setEnableHardwareScaler(true)
+            }
+        }.onFailure { Diag.error("webrtc.surfaceView.init", it, "camera=$camera") }.getOrThrow()
+        Diag.marker("webrtc.surfaceView.init.after", "camera=$camera")
+        v
     }
 
     // top10-8: фабрика libwebrtc одна на процесс
-    val factory = remember { ru.mytolm.frgate.webrtc.WebRtcEngine.getFactory(ctx) }
+    val factory = remember {
+        runCatching { ru.mytolm.frgate.webrtc.WebRtcEngine.getFactory(ctx) }
+            .onFailure { Diag.error("webrtc.view.getFactory", it, "camera=$camera") }
+            .getOrThrow()
+    }
 
     var pc by remember { mutableStateOf<PeerConnection?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
-            try { pc?.close() } catch (_: Exception) {}
+            try { pc?.close() } catch (e: Exception) { Diag.error("webrtc.pc.close", e, "camera=$camera") }
             // фабрику и общий EglBase не освобождаем — они живут до конца процесса (top10-8)
-            surfaceView.release()
+            Diag.marker("webrtc.surfaceView.release.before", "camera=$camera")
+            runCatching { surfaceView.release() }
+                .onFailure { Diag.error("webrtc.surfaceView.release", it, "camera=$camera") }
+            Diag.marker("webrtc.surfaceView.release.after", "camera=$camera")
         }
     }
 
@@ -469,6 +498,7 @@ fun WebRtcLivePlayer(camera: String, fullscreen: Boolean = false, onFallbackToHt
     }
 
     LaunchedEffect(camera) {
+        Diag.log("webrtc.player.start", "camera=$camera")
         try {
             val observer = object : PeerConnection.Observer {
                 override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
@@ -524,13 +554,14 @@ fun WebRtcLivePlayer(camera: String, fullscreen: Boolean = false, onFallbackToHt
                             conn.setRemoteDescription(
                                 object : SdpObserver {
                                     override fun onCreateSuccess(sdp: SessionDescription?) {}
-                                    override fun onCreateFailure(msg: String?) {}
-                                    override fun onSetSuccess() {}
-                                    override fun onSetFailure(msg: String?) { failed = true }
+                                    override fun onCreateFailure(msg: String?) { Diag.log("webrtc.answer.createFailure", "camera=$camera msg=$msg"); failed = true }
+                                    override fun onSetSuccess() { Diag.log("webrtc.answer.setSuccess", "camera=$camera") }
+                                    override fun onSetFailure(msg: String?) { Diag.log("webrtc.answer.setFailure", "camera=$camera msg=$msg"); if (msg != null) failed = true }
                                 },
                                 SessionDescription(SessionDescription.Type.ANSWER, answerSdp)
                             )
                         } catch (e: Exception) {
+                            Diag.error("webrtc.signaling", e, "camera=$camera")
                             failed = true
                         }
                     }
@@ -547,10 +578,12 @@ fun WebRtcLivePlayer(camera: String, fullscreen: Boolean = false, onFallbackToHt
                 waited++
             }
             if (!firstFrame) {
+                Diag.log("webrtc.noFirstFrame", "camera=$camera waited=${waited}s failed=$failed")
                 failed = true
                 fallback()
             }
         } catch (e: Exception) {
+            Diag.error("webrtc.player", e, "camera=$camera")
             failed = true
             fallback()
         }
@@ -604,7 +637,10 @@ fun CameraSnapshot(camera: String, tick: Int, hideBoxes: Boolean = false) {
                 contentDescription = camera,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)),
-                onError = { stage += 1 }
+                onError = {
+                    Diag.log("snapshot.stage.fallback", "camera=$camera stage=$stage url=${Diag.url(url)}")
+                    stage += 1
+                }
             )
         } else {
             Icon(

@@ -27,6 +27,7 @@ import kotlinx.coroutines.withContext
 import ru.mytolm.frgate.*
 import ru.mytolm.frgate.R
 import ru.mytolm.frgate.frigate.ExportItem
+import ru.mytolm.frgate.util.Diag
 import ru.mytolm.frgate.util.TimeFmt
 import java.io.File
 import java.util.Calendar
@@ -72,10 +73,10 @@ fun RecordsScreen(nav: NavHostController) {
             if (cameras.size > 1) {
                 var exp by remember { mutableStateOf(false) }
                 Box {
-                    TextButton(onClick = { exp = true }) { Text(camera ?: "") }
+                    TextButton(onClick = { exp = true }) { Text(camera?.let { ru.mytolm.frgate.util.camName(it) } ?: "") }
                     DropdownMenu(exp, onDismissRequest = { exp = false }) {
                         cameras.forEach {
-                            DropdownMenuItem(text = { Text(it) }, onClick = { camera = it; selectedDay = null; exp = false })
+                            DropdownMenuItem(text = { Text(ru.mytolm.frgate.util.camName(it)) }, onClick = { camera = it; selectedDay = null; exp = false })
                         }
                     }
                 }
@@ -122,12 +123,18 @@ fun RecordsScreen(nav: NavHostController) {
                             modifier = Modifier
                                 .aspectRatio(1f)
                                 .clickable {
-                                    val y = day.substring(0, 4).toInt()
-                                    val m = day.substring(5, 7).toInt()
-                                    val d = day.substring(8, 10).toInt()
+                                    // формат ключа дня с /api/recordings/summary: yyyy-MM-dd;
+                                    // другой формат (иная версия Frigate) игнорируем вместо падения в onClick
+                                    if (day.length < 10) return@clickable
+                                    val y = day.substring(0, 4).toIntOrNull() ?: return@clickable
+                                    val m = day.substring(5, 7).toIntOrNull() ?: return@clickable
+                                    val d = day.substring(8, 10).toIntOrNull() ?: return@clickable
                                     val cal = Calendar.getInstance().apply { set(y, m - 1, d, h, 0, 0) }
                                     val s = cal.timeInMillis / 1000
-                                    nav.navigate(Routes.recordPlay(camera ?: "", s, s + 3600))
+                                    Diag.log("tap.recordHour", "camera=$camera day=$day hour=$h")
+                                    Diag.traced("nav.tap.recordsToPlay") {
+                                        nav.navigate(Routes.recordPlay(camera ?: "", s, s + 3600))
+                                    }
                                 }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -169,7 +176,8 @@ fun RecordsScreen(nav: NavHostController) {
                                         setDataAndType(uri, "video/mp4")
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     })
-                                } catch (_: Exception) {
+                                } catch (exportErr: Exception) {
+                                    Diag.error("export.downloadPlay", exportErr, "exportId=${ex.id}")
                                 }
                                 busy = false
                             }
@@ -202,7 +210,7 @@ fun RecordPlayScreen(nav: NavHostController, camera: String, start: Long, end: L
     var exportMsg by remember { mutableStateOf<String?>(null) }
 
     Scaffold(topBar = {
-        ScreenHeader("$camera · ${TimeFmt.hm(start.toDouble())}–${TimeFmt.hm(end.toDouble())}",
+        ScreenHeader("${ru.mytolm.frgate.util.camName(camera)} · ${TimeFmt.hm(start.toDouble())}–${TimeFmt.hm(end.toDouble())}",
             onBack = { nav.popBackStack() },
             actions = {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -238,13 +246,20 @@ fun RecordPlayScreen(nav: NavHostController, camera: String, start: Long, end: L
 fun HlsPlayer(url: String, speed: Float, onError: (String?) -> Unit) {
     val player = rememberAuthExoPlayer()
     LaunchedEffect(url) {
-        player.setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
-        player.prepare()
+        Diag.log("player.hls.prepare", "url=${Diag.url(url)}")
+        try {
+            player.setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            player.prepare()
+        } catch (e: Exception) {
+            Diag.error("player.hls.prepare", e, "url=${Diag.url(url)}")
+            throw e
+        }
     }
     LaunchedEffect(speed) { player.setPlaybackSpeed(speed) }
     DisposableEffect(Unit) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(e: androidx.media3.common.PlaybackException) {
+                Diag.error("player.hls.error", e, "url=${Diag.url(url)} code=${e.errorCodeName}")
                 onError(e.errorCodeName)
             }
         }

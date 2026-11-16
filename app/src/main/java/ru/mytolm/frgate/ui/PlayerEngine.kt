@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import ru.mytolm.frgate.MediaSources
+import ru.mytolm.frgate.util.Diag
 
 /**
  * Единая обёртка ExoPlayer (top10-3): auth-источник, low-latency LoadControl для live,
@@ -22,6 +23,8 @@ import ru.mytolm.frgate.MediaSources
 fun rememberAuthExoPlayer(live: Boolean = false): ExoPlayer {
     val ctx = LocalContext.current
     val player = remember(live) {
+        Diag.log("player.build", "live=$live")
+        Diag.traced("player.build") {
         val loadControl = DefaultLoadControl.Builder()
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBufferDurationsMs(
@@ -37,6 +40,7 @@ fun rememberAuthExoPlayer(live: Boolean = false): ExoPlayer {
             .setMediaSourceFactory(DefaultMediaSourceFactory(MediaSources.okHttpDataSourceFactory()))
             .setLoadControl(loadControl)
             .build().apply { playWhenReady = true }
+        }
     }
 
     // top10-3 (L1): в фоне не играем и не качаем; release — при уходе экрана

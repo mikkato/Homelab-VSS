@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Search
@@ -270,7 +271,7 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                             } else {
                                 appContainer.settings.update { it.copy(notifCameras = cur) }
                             }
-                        }, label = { Text(c) })
+                        }, label = { Text(ru.mytolm.frgate.util.camName(c)) })
                     }
                 }
             }
@@ -362,6 +363,9 @@ fun AdminCamerasScreen(nav: NavHostController) {
     var cams by remember { mutableStateOf<List<CameraInfo>>(emptyList()) }
     var msg by remember { mutableStateOf<String?>(null) }
     var dirty by remember { mutableStateOf(false) }
+    // псевдоним камеры: (техническое имя, черновик); null = диалог закрыт
+    var aliasDraft by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val settings = appContainer.settings.state.collectAsState().value
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -391,7 +395,12 @@ fun AdminCamerasScreen(nav: NavHostController) {
                     val cam = cams[i]
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
-                            Text(cam.name, style = MaterialTheme.typography.titleMedium)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(ru.mytolm.frgate.util.camName(cam.name), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { aliasDraft = cam.name to (settings.cameraAliases[cam.name] ?: "") }) {
+                                    Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.alias_edit))
+                                }
+                            }
                             ToggleRow(stringResource(R.string.live_debug) + " detect", cam.detectEnabled) { on ->
                                 scope.launch {
                                     try {
@@ -427,6 +436,41 @@ fun AdminCamerasScreen(nav: NavHostController) {
                 }
             }
         }
+    }
+    // Диалог псевдонима: только в приложении, конфиг Frigate не трогаем
+    aliasDraft?.let { (cam, draft) ->
+        var text by remember(draft) { mutableStateOf(draft) }
+        AlertDialog(
+            onDismissRequest = { aliasDraft = null },
+            title = { Text(stringResource(R.string.alias_title, cam)) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = text, onValueChange = { text = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.alias_hint)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.alias_note, cam),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    appContainer.settings.update { s ->
+                        val m = s.cameraAliases.toMutableMap()
+                        if (text.isBlank()) m.remove(cam) else m[cam] = text.trim()
+                        s.copy(cameraAliases = m)
+                    }
+                    ru.mytolm.frgate.util.Diag.log("alias.set", "camera=$cam alias=${text.trim()}")
+                    aliasDraft = null
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = { TextButton(onClick = { aliasDraft = null }) { Text(stringResource(R.string.cancel)) } }
+        )
     }
 }
 

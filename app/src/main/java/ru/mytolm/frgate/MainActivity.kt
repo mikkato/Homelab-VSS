@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ru.mytolm.frgate.R
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -52,6 +53,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import ru.mytolm.frgate.data.ThemeMode
+import ru.mytolm.frgate.util.Diag
 import ru.mytolm.frgate.ui.*
 
 // Палитра «Plaud» — перенесена из AI-Dictaphone-v2 (MainActivity.kt), обязательна по ТЗ
@@ -137,9 +139,9 @@ object Routes {
     const val S_NOTIF = "settings/notifications"
     const val S_SYSTEM = "settings/system"
     const val S_LOGS = "settings/logs"
-    fun event(id: String) = "event/$id"
-    fun camera(c: String) = "camera/$c"
-    fun recordPlay(c: String, s: Long, e: Long) = "recordPlay/$c/$s/$e"
+    fun event(id: String) = "event/${android.net.Uri.encode(id)}"
+    fun camera(c: String) = "camera/${android.net.Uri.encode(c)}"
+    fun recordPlay(c: String, s: Long, e: Long) = "recordPlay/${android.net.Uri.encode(c)}/$s/$e"
 }
 
 class MainActivity : ComponentActivity() {
@@ -153,10 +155,18 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* исход не критичен */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Diag.log("activity.onCreate", "saved=${savedInstanceState != null}")
+        // DIAG: прошлый запуск умер без clean-shutdown или остались crash-дампы?
+        if (Diag.previousRunUnclean()) {
+            Diag.log("prev.run.unclean", "previous run ended uncleanly (no SHUTDOWN marker)")
+        }
+        Diag.pendingCrashFiles().forEach { f ->
+            Diag.log("prev.run.crashfile", "${f.name} size=${f.length()}")
+        }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotifPermission()
-        appContainer.ensureService()
+        Diag.traced("activity.ensureService") { appContainer.ensureService() }
         intent?.getStringExtra(EXTRA_EVENT_ID)?.let { pendingEventId.value = it }
         setContent {
             FRGateTheme {
@@ -168,7 +178,17 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(EXTRA_EVENT_ID)?.let { pendingEventId.value = it }
+        intent.getStringExtra(EXTRA_EVENT_ID)?.let {
+            Diag.log("activity.newIntent", "eventId=$it")
+            pendingEventId.value = it
+        }
+    }
+
+    override fun onDestroy() {
+        // маркер «завершили штатно» — если процесс умрёт позже без него, следующий старт пометит unclean
+        if (isFinishing) Diag.markCleanShutdown()
+        Diag.log("activity.onDestroy", "finishing=$isFinishing")
+        super.onDestroy()
     }
 
     private fun requestNotifPermission() {
@@ -184,13 +204,16 @@ class MainActivity : ComponentActivity() {
 fun AppRoot(pendingEventId: String?) {
     val nav: NavHostController = rememberNavController()
     val configured = appContainer.settings.state.collectAsState().value.configured
-    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0) { 5 }
+    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = 0) { 6 }
     val pagerScope = rememberCoroutineScope()
     val start = if (configured) Routes.MAIN else Routes.CONNECTION
 
     LaunchedEffect(pendingEventId) {
         if (pendingEventId != null && configured) {
-            nav.navigate(Routes.event(pendingEventId!!))
+            Diag.traced("nav.deeplink.event") {
+                Diag.log("nav.navigate", "route=event deeplink eventId=$pendingEventId")
+                nav.navigate(Routes.event(pendingEventId!!))
+            }
             MainActivity.pendingEventId.value = null // не перемонтировать при возврате назад
         }
     }
@@ -209,6 +232,7 @@ fun AppRoot(pendingEventId: String?) {
                     TabItem(R.string.tab_review, Icons.Outlined.FactCheck),
                     TabItem(R.string.tab_explore, Icons.Outlined.Search),
                     TabItem(R.string.tab_records, Icons.Outlined.History),
+                    TabItem(R.string.tab_journal, Icons.Outlined.CalendarMonth),
                     TabItem(R.string.tab_settings, Icons.Outlined.Settings)
                 )
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
@@ -232,18 +256,21 @@ fun AppRoot(pendingEventId: String?) {
             composable(Routes.CONNECTION) { ConnectionScreen(nav) }
             composable(Routes.MAIN) { MainPager(nav, pager) }
             composable(Routes.EVENT) { entry ->
-                EventScreen(nav, entry.arguments?.getString("eventId") ?: "")
+                val id = entry.arguments?.getString("eventId") ?: ""
+                Diag.log("screen.enter", "route=EventScreen eventId=$id")
+                EventScreen(nav, id)
             }
             composable(Routes.CAMERA) { entry ->
-                CameraDetailScreen(nav, entry.arguments?.getString("camera") ?: "")
+                val cam = entry.arguments?.getString("camera") ?: ""
+                Diag.log("screen.enter", "route=CameraDetailScreen camera=$cam")
+                CameraDetailScreen(nav, cam)
             }
             composable(Routes.RECORD_PLAY) { entry ->
-                RecordPlayScreen(
-                    nav,
-                    entry.arguments?.getString("camera") ?: "",
-                    entry.arguments?.getString("start")?.toLongOrNull() ?: 0L,
-                    entry.arguments?.getString("end")?.toLongOrNull() ?: 0L
-                )
+                val cam = entry.arguments?.getString("camera") ?: ""
+                val s = entry.arguments?.getString("start")?.toLongOrNull() ?: 0L
+                val e = entry.arguments?.getString("end")?.toLongOrNull() ?: 0L
+                Diag.log("screen.enter", "route=RecordPlayScreen camera=$cam start=$s end=$e")
+                RecordPlayScreen(nav, cam, s, e)
             }
             composable(Routes.S_CAMERAS) { AdminCamerasScreen(nav) }
             composable(Routes.S_OBJECTS) { AdminObjectsScreen(nav) }
@@ -275,7 +302,7 @@ fun MainPager(nav: NavHostController, pager: androidx.compose.foundation.pager.P
     val scope = rememberCoroutineScope()
     val tabRes = listOf(
         R.string.tab_live, R.string.tab_review, R.string.tab_explore,
-        R.string.tab_records, R.string.tab_settings
+        R.string.tab_records, R.string.tab_journal, R.string.tab_settings
     )
     Column(Modifier.fillMaxSize()) {
         // Бренд-строка (векторная иконка-щит + имя): PNG-баннер убран при rebrand
@@ -304,6 +331,7 @@ fun MainPager(nav: NavHostController, pager: androidx.compose.foundation.pager.P
                 1 -> ReviewScreen(nav)
                 2 -> ExploreScreen(nav)
                 3 -> RecordsScreen(nav)
+                4 -> JournalScreen(nav)
                 else -> SettingsScreen(nav)
             }
         }
@@ -315,7 +343,7 @@ fun MainPager(nav: NavHostController, pager: androidx.compose.foundation.pager.P
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            for (i in 0 until 5) {
+            for (i in 0 until 6) {
                 val active = pager.currentPage == i
                 Box(
                     Modifier

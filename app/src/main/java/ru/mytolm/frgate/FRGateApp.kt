@@ -65,27 +65,49 @@ lateinit var appContainer: AppContainer
 
 class FRGateApp : Application() {
     override fun onCreate() {
+        // Первым делом: crash-handler + process-start-маркер (до любой работы — ловим и ранние краши)
+        ru.mytolm.frgate.util.Diag.init(this)
+        ru.mytolm.frgate.util.Diag.marker("app.onCreate.before")
         super.onCreate()
         appContainer = AppContainer(this)
         // top10-4 (P1/P3): прогрев Keystore/EncryptedSharedPreferences, БД и Coil-ImageLoader
         // стартует до первого composition — main-поток не платит за генерацию master key.
         // Lazy потокобезопасен: кто первый тронул — тот прогрет, но это уже фоновый поток.
         appContainer.scope.launch(Dispatchers.IO) {
+            // кандидат №2 тихой смерти: Keystore/EncryptedSharedPreferences при первом обращении
+            ru.mytolm.frgate.util.Diag.log("warmup.settings.before")
             runCatching { appContainer.settings } // touch lazy: EncryptedSharedPreferences + master key
+                .onSuccess { ru.mytolm.frgate.util.Diag.log("warmup.settings.ok") }
+                .onFailure { ru.mytolm.frgate.util.Diag.error("warmup.settings.fail", it) }
         }
         appContainer.scope.launch(Dispatchers.IO) {
             runCatching { appContainer.db.openHelper.writableDatabase }
+                .onFailure { ru.mytolm.frgate.util.Diag.error("warmup.db", it) }
             runCatching { appContainer.imageLoader }
+                .onFailure { ru.mytolm.frgate.util.Diag.error("warmup.imageLoader", it) }
         }
         // настройки/БД/сервис — вне пути отрисовки первого кадра
         appContainer.scope.launch {
             if (appContainer.settings.current.configured) {
-                appContainer.ensureService()
-                ru.mytolm.frgate.service.EventWatcherService.scheduleWatchdog(this@FRGateApp)
-                // top10-1 (L5): ежедневная ротация Room-кэша (deleteOlder)
-                ru.mytolm.frgate.data.CacheCleanup.maybeRun(this@FRGateApp, appContainer.db)
+                ru.mytolm.frgate.util.Diag.traced("app.boot.ensureService") {
+                    appContainer.ensureService()
+                    ru.mytolm.frgate.service.EventWatcherService.scheduleWatchdog(this@FRGateApp)
+                    // top10-1 (L5): ежедневная ротация Room-кэша (deleteOlder)
+                    ru.mytolm.frgate.data.CacheCleanup.maybeRun(this@FRGateApp, appContainer.db)
+                }
             }
         }
+    }
+
+    // DIAG: уровень давления памяти в момент тихой смерти процесса (lmk/OOM часто без Java-стека)
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        ru.mytolm.frgate.util.Diag.log("onTrimMemory", "level=$level")
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        ru.mytolm.frgate.util.Diag.log("onLowMemory")
     }
 }
 

@@ -322,7 +322,7 @@ class EventWatcherService : android.app.Service() {
                 )
                 val n = NotificationCompat.Builder(this@EventWatcherService, channel)
                     .setSmallIcon(R.drawable.ic_stat_cam)
-                    .setContentTitle("${ev.camera}: ${ev.label} · $time")
+                    .setContentTitle("${ru.mytolm.frgate.util.camNameSync(ev.camera)}: ${ev.label} · $time")
                     .setContentText(ev.sub_label ?: "")
                     .setAutoCancel(true)
                     .setContentIntent(tapIntent)
