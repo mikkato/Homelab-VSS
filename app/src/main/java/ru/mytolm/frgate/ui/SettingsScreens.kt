@@ -380,6 +380,8 @@ private fun FlowRowWrap(content: @Composable () -> Unit) {
 fun AdminCamerasScreen(nav: NavHostController) {
     var cams by remember { mutableStateOf<List<CameraInfo>>(emptyList()) }
     var msg by remember { mutableStateOf<String?>(null) }
+    var needsRestart by remember { mutableStateOf(false) }
+    var confirmRestart by remember { mutableStateOf(false) }
     // псевдоним камеры: (техническое имя, черновик); null = диалог закрыт
     var aliasDraft by remember { mutableStateOf<Pair<String, String>?>(null) }
     val settings = appContainer.settings.state.collectAsState().value
@@ -411,7 +413,8 @@ fun AdminCamerasScreen(nav: NavHostController) {
                                     try {
                                         appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.detect.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(detectEnabled = on) }
-                                        msg = "Сохранено. Перезапустите Frigate (Настройки → Перезапустить), чтобы применить."
+                                        needsRestart = true
+                                        msg = "Сохранено. Нажмите «Перезапустить Frigate» ниже, чтобы применить."
                                     } catch (e: Exception) {
                                         msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
@@ -422,7 +425,8 @@ fun AdminCamerasScreen(nav: NavHostController) {
                                     try {
                                         appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.record.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(recordEnabled = on) }
-                                        msg = "Сохранено. Перезапустите Frigate (Настройки → Перезапустить), чтобы применить."
+                                        needsRestart = true
+                                        msg = "Сохранено. Нажмите «Перезапустить Frigate» ниже, чтобы применить."
                                     } catch (e: Exception) {
                                         msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
@@ -447,8 +451,41 @@ fun AdminCamerasScreen(nav: NavHostController) {
                         }
                     }
                 }
+                // detect/record применяются Frigate только после перезапуска — кнопка рядом
+                if (needsRestart) {
+                    item {
+                        Button(onClick = { confirmRestart = true }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            Text(stringResource(R.string.settings_restart))
+                        }
+                    }
+                }
             }
         }
+    }
+    // Рестарт NVR — только через подтверждение (как в общих настройках)
+    if (confirmRestart) {
+        AlertDialog(
+            onDismissRequest = { confirmRestart = false },
+            title = { Text(stringResource(R.string.settings_restart)) },
+            text = { Text(stringResource(R.string.confirm_restart_text, appContainer.settings.normalizedBase())) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRestart = false
+                    scope.launch {
+                        try {
+                            appContainer.client.restart()
+                            needsRestart = false
+                            msg = "Frigate перезапускается. Изменения применятся через минуту."
+                        } catch (e: Exception) {
+                            msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
+                        }
+                    }
+                }) { Text(stringResource(R.string.settings_restart), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRestart = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
     // Диалог псевдонима: только в приложении, конфиг Frigate не трогаем
     aliasDraft?.let { (cam, draft) ->
