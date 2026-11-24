@@ -34,6 +34,8 @@ class LiveViewModel : ViewModel() {
         val fromCache: Boolean = false,
         val loading: Boolean = false,
         val error: String? = null,
+        /** camera_fps по камерам из /api/stats; 0 = Frigate не получает кадры (захват завис). */
+        val fps: Map<String, Double> = emptyMap(),
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -48,7 +50,18 @@ class LiveViewModel : ViewModel() {
                 appContainer.db.cameraDao().upsert(
                     cams.map { CameraEntity(it.name, it.enabled, it.detectEnabled, it.recordEnabled, false) }
                 )
-                _state.update { it.copy(cameras = cams, offline = false, fromCache = false, error = null, loading = false) }
+                // fps камер: camera_fps=0 при живой камере = захват Frigate завис
+                // (go2rtc живёт отдельно — плеер по тапу работает, а latest.jpg — заглушка).
+                val fps = try {
+                    val stats = appContainer.client.stats()
+                    (stats["cameras"] as? kotlinx.serialization.json.JsonObject)
+                        ?.mapNotNull { (name, v) ->
+                            val fpsv = (v as? kotlinx.serialization.json.JsonObject)
+                                ?.get("camera_fps") as? kotlinx.serialization.json.JsonPrimitive
+                            fpsv?.content?.toDoubleOrNull()?.let { name to it }
+                        }?.toMap() ?: emptyMap()
+                } catch (_: Exception) { _state.value.fps }
+                _state.update { it.copy(cameras = cams, fps = fps, offline = false, fromCache = false, error = null, loading = false) }
             } catch (e: Exception) {
                 // top10-1: сеть легла — читаем кэш камер из Room
                 var cached: List<CameraInfo> = emptyList()

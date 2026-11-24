@@ -68,6 +68,10 @@ fun LiveScreen(nav: NavHostController) {
     val vm: LiveViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val st by vm.state.collectAsStateWithLifecycle()
     var tick by remember { mutableIntStateOf(0) }
+    // камера с зависшим захватом Frigate (fps=0): диалог «Оживить» → рестарт NVR
+    var stalledCam by remember { mutableStateOf<String?>(null) }
+    var reviving by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val cameras = st.cameras
     val offline = st.offline
     val fromCache = st.fromCache
@@ -153,7 +157,9 @@ fun LiveScreen(nav: NavHostController) {
                                         }
                                     }
                             ) {
-                                CameraSnapshot(cam.name, tick, boxesHidden)
+                                CameraSnapshot(cam.name, tick, boxesHidden,
+                                    stalled = (st.fps[cam.name] ?: 1.0) <= 0.0,
+                                    onRevive = { stalledCam = cam.name })
                                 Text(
                                     ru.mytolm.frgate.util.camName(cam.name),
                                     style = MaterialTheme.typography.labelLarge,
@@ -196,6 +202,41 @@ fun LiveScreen(nav: NavHostController) {
                 }
             }
         }
+    }
+    // Зависший захват Frigate (fps=0 при живой камере): оживление = рестарт NVR
+    stalledCam?.let { cam ->
+        AlertDialog(
+            onDismissRequest = { if (!reviving) stalledCam = null },
+            title = { Text(ru.mytolm.frgate.util.camName(cam)) },
+            text = {
+                Text(if (reviving) "Frigate перезапускается, ждём возврат потока…"
+                     else "Frigate не получает кадры с камеры (поток завис на сервере). " +
+                          "Обычно лечится перезапуском Frigate: видеонаблюдение пропадёт примерно на минуту.")
+            },
+            confirmButton = {
+                if (!reviving) TextButton(onClick = {
+                    reviving = true
+                    scope.launch {
+                        try {
+                            appContainer.client.restart()
+                            // ждём возврата fps (до ~80 с), обновляя stats
+                            repeat(8) {
+                                delay(10_000)
+                                vm.refresh()
+                                if ((vm.state.value.fps[cam] ?: 0.0) > 0.0) return@launch.also { stalledCam = null; reviving = false }
+                            }
+                            reviving = false
+                        } catch (e: Exception) {
+                            reviving = false
+                            stalledCam = null
+                        }
+                    }
+                }) { Text("Перезапустить Frigate", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                if (!reviving) TextButton(onClick = { stalledCam = null }) { Text("Позже") }
+            }
+        )
     }
 }
 
@@ -613,7 +654,8 @@ private open class SdpObs(
 
 /** Снапшот плитки: grid.jpg → latest.jpg → плейсхолдер (grid отсутствует без детекции, §3.1). */
 @Composable
-fun CameraSnapshot(camera: String, tick: Int, hideBoxes: Boolean = false) {
+fun CameraSnapshot(camera: String, tick: Int, hideBoxes: Boolean = false,
+                   stalled: Boolean = false, onRevive: () -> Unit = {}) {
     var stage by remember(camera, hideBoxes) { mutableStateOf(0) }
     // «Принять» -> latest.jpg?bbox=0: grid.jpg всегда сburned-рамками, bbox поддерживает latest
     val url = if (hideBoxes) when (stage) {
@@ -648,6 +690,35 @@ fun CameraSnapshot(camera: String, tick: Int, hideBoxes: Boolean = false) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(28.dp)
             )
+        }
+        // Захват Frigate завис (fps=0): поверх — понятная причина + «Оживить»,
+        // чтобы серверную заглушку «No frames have been received» не принимали за мёртвую камеру
+        if (stalled) {
+            Column(
+                Modifier.fillMaxSize()
+                    .background(Color(0xB3101010))
+                    .clickable { onRevive() }
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Outlined.VideocamOff, null,
+                    tint = Color.White, modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Поток завис на сервере",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Оживить",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF9BD1B8)
+                )
+            }
         }
     }
 }
