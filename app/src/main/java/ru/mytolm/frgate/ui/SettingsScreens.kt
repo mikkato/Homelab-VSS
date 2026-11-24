@@ -372,12 +372,14 @@ private fun FlowRowWrap(content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** §3.8 Камеры: вкл/выкл, детекция, restream + сохранение/рестарт. */
+/** §3.8 Камеры: вкл/выкл, детекция, restream.
+ *  В 0.17 config/set сам пишет config.yml — отдельная «Сохранить» (config/save) не нужна;
+ *  она к тому же сломана (0.17 требует save_option + YAML-тело) и давала «Не сохранено: ?».
+ *  Смена detect/record применяется Frigate после перезапуска — говорим о нём прямо. */
 @Composable
 fun AdminCamerasScreen(nav: NavHostController) {
     var cams by remember { mutableStateOf<List<CameraInfo>>(emptyList()) }
     var msg by remember { mutableStateOf<String?>(null) }
-    var dirty by remember { mutableStateOf(false) }
     // псевдоним камеры: (техническое имя, черновик); null = диалог закрыт
     var aliasDraft by remember { mutableStateOf<Pair<String, String>?>(null) }
     val settings = appContainer.settings.state.collectAsState().value
@@ -389,19 +391,7 @@ fun AdminCamerasScreen(nav: NavHostController) {
     }
 
     Scaffold(topBar = {
-        ScreenHeader(stringResource(R.string.settings_cameras), onBack = { nav.popBackStack() }, actions = {
-            if (dirty) Button(onClick = {
-                scope.launch {
-                    try {
-                        appContainer.client.configSave()
-                        msg = null
-                        dirty = false
-                    } catch (e: Exception) {
-                        msg = appContainer.app.getString(R.string.settings_save_failed, (e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "?")
-                    }
-                }
-            }) { Text(stringResource(R.string.save)) }
-        })
+        ScreenHeader(stringResource(R.string.settings_cameras), onBack = { nav.popBackStack() })
     }) { pad ->
         Column(Modifier.padding(pad)) {
             msg?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
@@ -421,8 +411,9 @@ fun AdminCamerasScreen(nav: NavHostController) {
                                     try {
                                         appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.detect.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(detectEnabled = on) }
-                                        dirty = true
-                                    } catch (_: Exception) {
+                                        msg = "Сохранено. Перезапустите Frigate (Настройки → Перезапустить), чтобы применить."
+                                    } catch (e: Exception) {
+                                        msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
                                 }
                             }
@@ -431,18 +422,25 @@ fun AdminCamerasScreen(nav: NavHostController) {
                                     try {
                                         appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.record.enabled" to on))
                                         cams = cams.toMutableList().also { it[i] = cam.copy(recordEnabled = on) }
-                                        dirty = true
-                                    } catch (_: Exception) {
+                                        msg = "Сохранено. Перезапустите Frigate (Настройки → Перезапустить), чтобы применить."
+                                    } catch (e: Exception) {
+                                        msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
                                 }
                             }
                             ToggleRow("enabled", cam.enabled) { on ->
                                 scope.launch {
                                     try {
-                                        appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.enabled" to on))
+                                        // enabled применяется на лету — у review-процессов
+                                        // есть подписка на топик enabled камеры
+                                        appContainer.client.configSetLive(
+                                            "cameras.${cam.name}.enabled", on,
+                                            "config/cameras/${cam.name}/enabled"
+                                        )
                                         cams = cams.toMutableList().also { it[i] = cam.copy(enabled = on) }
-                                        dirty = true
-                                    } catch (_: Exception) {
+                                        msg = "Сохранено."
+                                    } catch (e: Exception) {
+                                        msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
                                 }
                             }
@@ -534,13 +532,6 @@ fun AdminObjectsScreen(nav: NavHostController) {
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = {
-                scope.launch {
-                    try { appContainer.client.configSave() } catch (_: Exception) {
-                    }
-                }
-            }) { Text(stringResource(R.string.save)) }
         }
     }
 }
