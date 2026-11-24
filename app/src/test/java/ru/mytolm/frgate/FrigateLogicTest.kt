@@ -135,4 +135,44 @@ class FrigateLogicTest {
         assertEquals("c\\d", parsed[1].jsonPrimitive.content)
     }
 
+    // ---------- Категория уведомления = серверная severity (2.1.2) ----------
+    private fun evWithSeverity(sev: String?): ru.mytolm.frgate.frigate.FrigateEvent {
+        val sevJson = if (sev == null) "" else ",\"max_severity\":\"" + sev + "\""
+        val raw = "{\"id\":\"x\",\"camera\":\"cam\",\"label\":\"person\",\"start_time\":1.0," +
+            "\"data\":{\"box\":[0,0,1,1],\"score\":0.5" + sevJson + "}}"
+        return kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            .decodeFromString(ru.mytolm.frgate.frigate.FrigateEvent.serializer(), raw)
+    }
+
+    @Test fun `severity maps to notification category`() {
+        assertEquals("alarm", ru.mytolm.frgate.frigate.EventCategory.of(evWithSeverity("alert")))
+        assertEquals("detection", ru.mytolm.frgate.frigate.EventCategory.of(evWithSeverity("detection")))
+        // alerts+detections выключены на камере → max_severity null → не будим
+        assertNull(ru.mytolm.frgate.frigate.EventCategory.of(evWithSeverity(null)))
+    }
+
+    // ---------- review-схема 0.17: секции-объекты с enabled ----------
+    @Test fun `reviewStates parses 017 object schema`() {
+        val cfg = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"cameras":{
+              "front":{"review":{"alerts":{"enabled":false,"labels":["person"]},"detections":{"enabled":true}},
+                       "motion":{"enabled":true},"detect":{"enabled":true}},
+              "back":{"review":{"alerts":{"enabled":true},"detections":{"enabled":false}},
+                      "motion":{"enabled":false},"detect":{"enabled":false}}
+            }}"""
+        ).jsonObject
+        val st = ru.mytolm.frgate.frigate.ConfigParse.reviewStates(cfg).associateBy { it.name }
+        assertEquals(2, st.size)
+        assertFalse(st["front"]!!.alertsEnabled)
+        assertTrue(st["front"]!!.detectionsEnabled)
+        assertTrue(st["front"]!!.motionEnabled)
+        assertTrue(st["back"]!!.alertsEnabled)
+        assertFalse(st["back"]!!.detectionsEnabled)
+        assertFalse(st["back"]!!.motionEnabled)
+    }
+
+    @Test fun `quiet hours equal bounds means always quiet`() {
+        assertTrue(TimeFmt.inQuietHours(12 * 60, 22 * 60, 22 * 60)) // 22:00–22:00 = круглосуточно
+        assertFalse(TimeFmt.inQuietHours(12 * 60, -1, 22 * 60))
+    }
 }

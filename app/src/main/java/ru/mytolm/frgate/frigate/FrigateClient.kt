@@ -227,6 +227,23 @@ class FrigateClient(private val settings: ru.mytolm.frgate.data.SettingsStore) {
         configSet(root)
     }
 
+    /**
+     * 0.17: config/set с немедленным применением без рестарта.
+     * requires_restart=0 + непустой update_topic — единственный путь, при котором
+     * Frigate публикует обновление в ZMQ-топик и процессы (review/motion) подхватывают
+     * его на лету (frigate/api/app.py: без update_topic меняется только HTTP-копия конфига).
+     */
+    suspend fun configSetLive(path: String, value: Any?, updateTopic: String) {
+        val root = nestPath(buildJsonObject { }, path.split("."), ConfigNest.leafOf(value))
+        val body = json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("requires_restart", 0)
+            put("update_topic", updateTopic)
+            put("config_data", root)
+        })
+        val (c, b) = mutate("PUT", "/api/config/set", body)
+        if (c !in 200..299) throw httpError(c, b)
+    }
+
     private fun nestPath(obj: JsonObject, keys: List<String>, leaf: JsonElement): JsonObject =
         ConfigNest.nestPath(obj, keys, leaf)
 

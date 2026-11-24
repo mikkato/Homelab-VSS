@@ -44,6 +44,10 @@ class EventWatcherService : android.app.Service() {
     @Volatile private var stopped = false
     @Volatile private var offlineSince = 0L
     private var lastNotifyIds = mutableSetOf<String>() // дедуп within session
+    private val notifyCat = mutableMapOf<String, String>() // eventId → категория (для канала)
+    /** Серверный review-конфиг камер (кэш; обновляется при коннекте и раз в REVIEW_CONFIG_REFRESH_MS). */
+    @Volatile private var reviewState: Map<String, ru.mytolm.frgate.frigate.CameraReviewState> = emptyMap()
+    private var lastReviewCfgMs = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -165,6 +169,17 @@ class EventWatcherService : android.app.Service() {
                 }
                 persistLastPoll()
                 dispatchNotifications(toNotify)
+                // Серверный review-конфиг камер: при коннекте и раз в 5 мин — второй
+                // контур фильтрации уведомлений (severity из /api/events отстаёт до рестарта)
+                val nowMs = System.currentTimeMillis()
+                if (nowMs - lastReviewCfgMs > REVIEW_CONFIG_REFRESH_MS) {
+                    lastReviewCfgMs = nowMs
+                    try {
+                        reviewState = ru.mytolm.frgate.frigate.ConfigParse
+                            .reviewStates(app.client.config())
+                            .associateBy { it.name }
+                    } catch (_: Exception) { }
+                }
                 // зелёные рамки на плитках: снимаем раз в 60 с (F2 — не каждый цикл)
                 if (System.currentTimeMillis() - lastReviewMs > REVIEW_INTERVAL_MS) {
                     lastReviewMs = System.currentTimeMillis()
@@ -240,11 +255,15 @@ class EventWatcherService : android.app.Service() {
             } catch (_: Exception) {
             }
         }
-        if (!passesFilter(ev)) return
+        // Категория = серверная severity (alert/detection); null — Frigate не отнёс объект
+        // ни к alerts, ни к detections (напр. alerts выключены на камере) → не будим.
+        val cat = ru.mytolm.frgate.frigate.EventCategory.of(ev) ?: return
+        if (!passesFilter(ev, cat)) return
+        notifyCat[ev.id] = cat
         // Анти-шторм (F3): не будить уведомлениями о том, что произошло давно (после офлайна/рестарта)
         if (nowSec - ev.start_time.toLong() > NOTIFY_FRESH_SEC) return
         if (!lastNotifyIds.add(ev.id)) return
-        if (lastNotifyIds.size > 500) lastNotifyIds = mutableSetOf(ev.id)
+        if (lastNotifyIds.size > 500) { lastNotifyIds = mutableSetOf(ev.id); notifyCat.clear() }
         toNotify.add(ev)
     }
 
@@ -266,7 +285,10 @@ class EventWatcherService : android.app.Service() {
                 style.addLine("${ev.camera}: ${ev.label} · ${TimeFmt.hm(ev.since)}")
             }
             if (list.size > 5) style.addLine("…")
-            val n = NotificationCompat.Builder(this, CHANNEL_DETECTION)
+            // канал сводки — по максимальной severity внутри залпа
+            val burstChannel =
+                if (list.any { notifyCat[it.id] == "alarm" }) CHANNEL_ALARM else CHANNEL_DETECTION
+            val n = NotificationCompat.Builder(this, burstChannel)
                 .setSmallIcon(R.drawable.ic_stat_cam)
                 .setContentTitle(getString(R.string.notif_burst_title, list.size))
                 .setStyle(style)
@@ -277,20 +299,27 @@ class EventWatcherService : android.app.Service() {
         }
     }
 
-    private fun passesFilter(ev: FrigateEvent): Boolean {
+    private fun passesFilter(ev: FrigateEvent, cat: String): Boolean {
         val s = app.settings.current
         if (!s.notifEnabled) return false
-        val cat = if (ev.zones.isNotEmpty() && ev.has_clip) "alarm" else "detection"
-        // Категории: событие проходит, если его категория включена (motion-события в 0.17
-        // приходят отдельным review-топиком; для event-WS классифицируем по наличию клипа/зоны)
-        if (s.notifCategories.isNotEmpty() && !s.notifCategories.contains(cat)) {
-            if (!(s.notifCategories.contains("motion") && cat == "detection")) return false
+        // Категории: «пусто = ничего» — снятые чипы реально глушат (было: пустое
+        // множество отключало фильтр целиком, и уведомления шли «как включённые все»).
+        if (cat !in s.notifCategories) return false
+        // Второй контур: серверный review-конфиг камеры. У /api/events severity
+        // обновляется процессом object_processing только после рестарта Frigate,
+        // поэтому при выключенных на камере alerts/detections глушим сами.
+        val rs = reviewState[ev.camera]
+        if (rs != null) {
+            if (cat == "alarm" && !rs.alertsEnabled) return false
+            if (cat == "detection" && !rs.detectionsEnabled) return false
         }
         if (s.notifLabels.isNotEmpty() && !s.notifLabels.contains(ev.label)) return false
         if (s.notifCameras.isNotEmpty() && !s.notifCameras.contains(ev.camera)) return false
-        val cal = java.util.Calendar.getInstance()
-        val nowMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
-        if (TimeFmt.inQuietHours(nowMin, s.quietFrom, s.quietTo)) return false
+        // Тихие часы — по времени СОБЫТИЯ (polling в фоне идёт раз в 60 с,
+        // событие могло дойти уже после конца «тишины»)
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = (ev.start_time * 1000).toLong() }
+        val evMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+        if (TimeFmt.inQuietHours(evMin, s.quietFrom, s.quietTo)) return false
         return true
     }
 
@@ -305,11 +334,10 @@ class EventWatcherService : android.app.Service() {
                     f.delete()
                 } catch (_: Exception) {
                 }
-                val cat = if (ev.zones.isNotEmpty() && ev.has_clip) "alarm" else "detection"
-                val channel = when {
-                    cat == "alarm" -> CHANNEL_ALARM
-                    cat == "detection" -> CHANNEL_DETECTION
-                    else -> CHANNEL_MOTION
+                val cat = notifyCat[ev.id] ?: "detection"
+                val channel = when (cat) {
+                    "alarm" -> CHANNEL_ALARM
+                    else -> CHANNEL_DETECTION
                 }
                 val time = TimeFmt.hm(ev.since)
                 val tapIntent = PendingIntent.getActivity(
@@ -383,6 +411,7 @@ class EventWatcherService : android.app.Service() {
         const val POLL_INTERVAL_MS = 5_000L      // экран включён (top10-2)
         const val POLL_INTERVAL_BG_MS = 60_000L  // экран погашен
         const val REVIEW_INTERVAL_MS = 60_000L
+        const val REVIEW_CONFIG_REFRESH_MS = 300_000L // /api/config review-состояние камер — раз в 5 мин
         const val NOTIFY_FRESH_SEC = 120L        // анти-шторм: старше 2 мин — только в кэш
         const val NOTIFY_CAP = 3                 // залп > 3 — одна сводная нотификация
         const val KEY_LAST_POLL = "last_poll_sec"

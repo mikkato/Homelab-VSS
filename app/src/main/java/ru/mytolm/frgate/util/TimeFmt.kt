@@ -49,10 +49,14 @@ object TimeFmt {
         Calendar.getInstance().apply { timeInMillis = (ts * 1000).toLong() }
             .get(Calendar.HOUR_OF_DAY)
 
-    /** currently в минутах от полуночи для фильтра тихих часов (с переходом через полночь). */
+    /** currently в минутах от полуночи для фильтра тихих часов (с переходом через полночь).
+     *  from == to трактуется как «тишина круглосуточно» (выбор «22:00–22:00» = весь день). */
     fun inQuietHours(nowMinutes: Int, from: Int, to: Int): Boolean {
-        if (from < 0 || to < 0 || from == to) return false
-        return if (from <= to) nowMinutes in from until to
-        else nowMinutes >= from || nowMinutes < to
+        if (from < 0 || to < 0) return false
+        return when {
+            from == to -> true
+            from <= to -> nowMinutes in from until to
+            else -> nowMinutes >= from || nowMinutes < to
+        }
     }
 }

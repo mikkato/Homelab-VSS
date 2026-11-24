@@ -35,7 +35,7 @@ data class EventData(
     val top_score: Float = 0f,
     val attributes: List<String> = emptyList(),
     val zones: List<String> = emptyList(),
-    @SerialName("max_severity") val maxSeverity: String = "detection",
+    @SerialName("max_severity") val maxSeverity: String? = null,
     @SerialName("average_estimated_speed") val speed: Double = 0.0
 )
 
@@ -146,23 +146,56 @@ object ConfigParse {
         return (auth["cookie_name"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNullSafe() ?: "frigate_token"
     }
 
-    fun reviewSettings(configJson: kotlinx.serialization.json.JsonObject): Map<String, List<String>> {
-        val out = mutableMapOf<String, List<String>>()
+    /**
+     * Frigate 0.17: review.alerts / review.detections — объекты {enabled, labels, ...}
+     * (не массивы). Motion-review = камерный motion.enabled (review.motion не существует).
+     */
+    fun reviewStates(configJson: kotlinx.serialization.json.JsonObject): List<CameraReviewState> {
+        val out = mutableListOf<CameraReviewState>()
         val cams = configJson["cameras"] as? kotlinx.serialization.json.JsonObject ?: return out
         for ((name, v) in cams) {
             val o = v as? kotlinx.serialization.json.JsonObject ?: continue
-            val rev = o["review"] as? kotlinx.serialization.json.JsonObject ?: continue
-            fun arr(key: String): List<String> =
-                (rev[key] as? kotlinx.serialization.json.JsonArray)?.mapNotNull {
-                    (it as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNullSafe()
-                } ?: emptyList()
-            val cats = mutableListOf<String>()
-            if (arr("alerts").isNotEmpty()) cats += "alarm"
-            if (arr("detections").isNotEmpty()) cats += "detection"
-            if (arr("motion").isNotEmpty()) cats += "motion"
-            out[name] = cats
+            val rev = o["review"] as? kotlinx.serialization.json.JsonObject
+            fun sectionEnabled(section: String): Boolean {
+                val s = rev?.get(section) as? kotlinx.serialization.json.JsonObject ?: return false
+                return (s["enabled"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull ?: false
+            }
+            fun bool(path1: String): Boolean {
+                val s = o[path1] as? kotlinx.serialization.json.JsonObject ?: return false
+                return (s["enabled"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull ?: false
+            }
+            out += CameraReviewState(
+                name = name,
+                alertsEnabled = sectionEnabled("alerts"),
+                detectionsEnabled = sectionEnabled("detections"),
+                motionEnabled = bool("motion"),
+                detectEnabled = bool("detect")
+            )
         }
-        return out
+        return out.sortedBy { it.name }
+    }
+}
+
+/** Состояние review-категорий камеры (0.17: alerts/detections + motion.enabled). */
+data class CameraReviewState(
+    val name: String,
+    val alertsEnabled: Boolean,
+    val detectionsEnabled: Boolean,
+    val motionEnabled: Boolean,
+    val detectEnabled: Boolean
+)
+
+/**
+ * Категория уведомления = серверная severity события (Frigate: alert|detection|null).
+ * null = Frigate не отнёс объект ни к alerts, ни к detections (например, alerts выключены
+ * на камере) — уведомления не шлём. Локальная эвристика «зоны+клип» больше не используется:
+ * она расходилась с review-конфигом сервера и давала ложные «alarm».
+ */
+object EventCategory {
+    fun of(ev: FrigateEvent): String? = when (ev.data.maxSeverity) {
+        "alert" -> "alarm"
+        "detection" -> "detection"
+        else -> null
     }
 }
 

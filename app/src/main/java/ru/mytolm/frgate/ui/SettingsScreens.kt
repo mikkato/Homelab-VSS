@@ -30,6 +30,7 @@ import ru.mytolm.frgate.R
 import ru.mytolm.frgate.data.LiveMode
 import ru.mytolm.frgate.data.ThemeMode
 import ru.mytolm.frgate.frigate.CameraInfo
+import ru.mytolm.frgate.frigate.CameraReviewState
 import ru.mytolm.frgate.frigate.ConfigParse
 import ru.mytolm.frgate.frigate.UserInfo
 
@@ -250,12 +251,17 @@ fun NotificationSettingsScreen(nav: NavHostController) {
             }
             Text(stringResource(R.string.notif_filter_cats), style = MaterialTheme.typography.titleSmall)
             FlowRowWrap {
-                listOf("alarm" to R.string.cat_alarm, "detection" to R.string.cat_detection, "motion" to R.string.cat_motion)
+                // «Движение» убрано: notifications строятся из объектов (alert/detection),
+                // motion-объектных событий нет — чип был ловушкой («только движение» = всё равно дёрет).
+                listOf("alarm" to R.string.cat_alarm, "detection" to R.string.cat_detection)
                     .forEach { (cat, res) ->
                         FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = s.notifCategories.contains(cat), onClick = {
-                                val cur = s.notifCategories.toMutableSet()
-                                if (cur.contains(cat)) cur.remove(cat) else cur.add(cat)
-                                appContainer.settings.update { it.copy(notifCategories = cur) }
+                                // от `it`, а не от снимка `s` — без потери быстрых тапов
+                                appContainer.settings.update { st ->
+                                    val cur = st.notifCategories.toMutableSet()
+                                    if (cur.contains(cat)) cur.remove(cat) else cur.add(cat)
+                                    st.copy(notifCategories = cur)
+                                }
                             }, label = { Text(stringResource(res)) })
                     }
             }
@@ -264,12 +270,16 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 FlowRowWrap {
                     cameras.forEach { c ->
                         FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = s.notifCameras.contains(c) || s.notifCameras.isEmpty(), onClick = {
-                            val cur = if (s.notifCameras.isEmpty()) cameras.toMutableSet() else s.notifCameras.toMutableSet()
-                            if (cur.contains(c)) cur.remove(c) else cur.add(c)
-                            if (cur.isEmpty() || cur.size == cameras.size) {
-                                appContainer.settings.update { it.copy(notifCameras = emptySet()) }
-                            } else {
-                                appContainer.settings.update { it.copy(notifCameras = cur) }
+                            appContainer.settings.update { st ->
+                                val cur = if (st.notifCameras.isEmpty()) cameras.toMutableSet() else st.notifCameras.toMutableSet()
+                                if (cur.contains(c)) cur.remove(c) else cur.add(c)
+                                // «пусто = все» — снимать последнюю камеру нельзя (иначе фильтр
+                                // отключится и шлёт все); полное множество нормализуем в «все»
+                                when {
+                                    cur.isEmpty() -> st
+                                    cur.size == cameras.size -> st.copy(notifCameras = emptySet())
+                                    else -> st.copy(notifCameras = cur)
+                                }
                             }
                         }, label = { Text(ru.mytolm.frgate.util.camName(c)) })
                     }
@@ -280,10 +290,15 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 FlowRowWrap {
                     labels.forEach { l ->
                         FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = s.notifLabels.contains(l) || s.notifLabels.isEmpty(), onClick = {
-                            val cur = if (s.notifLabels.isEmpty()) labels.toMutableSet() else s.notifLabels.toMutableSet()
-                            if (cur.contains(l)) cur.remove(l) else cur.add(l)
-                            appContainer.settings.update {
-                                it.copy(notifLabels = if (cur.size == labels.size) emptySet() else cur)
+                            appContainer.settings.update { st ->
+                                val cur = if (st.notifLabels.isEmpty()) labels.toMutableSet() else st.notifLabels.toMutableSet()
+                                if (cur.contains(l)) cur.remove(l) else cur.add(l)
+                                // «пусто = все» — снятие последнего класса не должно включать все
+                                when {
+                                    cur.isEmpty() -> st
+                                    cur.size == labels.size -> st.copy(notifLabels = emptySet())
+                                    else -> st.copy(notifLabels = cur)
+                                }
                             }
                         }, label = { Text(ru.mytolm.frgate.util.LabelsRu.labelRu(l)) })
                     }
@@ -530,15 +545,49 @@ fun AdminObjectsScreen(nav: NavHostController) {
     }
 }
 
-/** §3.8 Категории review по камерам. */
+/**
+ * §3.8 Категории обзора по камерам (Frigate 0.17).
+ * alerts/detections — объекты review.alerts.enabled / review.detections.enabled (bool);
+ * motion — камерный motion.enabled (review.motion в 0.17 не существует).
+ * Пишется через config/set + update_topic (применяется на лету, без рестарта;
+ * config/save не нужен — Frigate сам пишет config.yml).
+ * Внимание: motion off + detect on = невалидный конфиг (Frigate 400) — блокируем.
+ */
 @Composable
 fun AdminReviewScreen(nav: NavHostController) {
-    var reviewMap by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    var cams by remember { mutableStateOf<List<CameraReviewState>>(emptyList()) }
     var msg by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        try { reviewMap = ConfigParse.reviewSettings(appContainer.client.config()) } catch (_: Exception) {
+        try { cams = ConfigParse.reviewStates(appContainer.client.config()) } catch (_: Exception) {
+        }
+    }
+
+    fun setCategory(cam: CameraReviewState, cat: String, on: Boolean) {
+        scope.launch {
+            msg = null
+            if (cat == "motion" && !on && cam.detectEnabled) {
+                msg = "Движение нельзя выключить при включённой детекции (Frigate: детекция требует движение). Сначала выключите detect у камеры."
+                return@launch
+            }
+            val (path, topic) = when (cat) {
+                "alarm" -> "cameras.${cam.name}.review.alerts.enabled" to "config/cameras/${cam.name}/review"
+                "motion" -> "cameras.${cam.name}.motion.enabled" to "config/cameras/${cam.name}/motion"
+                else -> "cameras.${cam.name}.review.detections.enabled" to "config/cameras/${cam.name}/review"
+            }
+            try {
+                appContainer.client.configSetLive(path, on, topic)
+                cams = cams.map {
+                    if (it.name != cam.name) it else when (cat) {
+                        "alarm" -> it.copy(alertsEnabled = on)
+                        "motion" -> it.copy(motionEnabled = on)
+                        else -> it.copy(detectionsEnabled = on)
+                    }
+                }
+            } catch (e: Exception) {
+                msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
+            }
         }
     }
 
@@ -546,32 +595,23 @@ fun AdminReviewScreen(nav: NavHostController) {
         Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             msg?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            reviewMap.forEach { (cam, cats) ->
+            cams.forEach { cam ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
-                        Text(cam, style = MaterialTheme.typography.titleMedium)
+                        Text(ru.mytolm.frgate.util.camName(cam.name), style = MaterialTheme.typography.titleMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("alarm", "detection", "motion").forEach { cat ->
-                                val on = cats.contains(cat) ||
-                                    (cat == "detection" && cats.isEmpty()) // default в 0.17 — detection
+                            listOf("alarm" to cam.alertsEnabled,
+                                   "detection" to cam.detectionsEnabled,
+                                   "motion" to cam.motionEnabled).forEach { (cat, on) ->
                                 FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = on, onClick = {
-                                    scope.launch {
-                                        val next = if (on) cats - cat else cats + cat
-                                        val key = when (cat) {
-                                            "alarm" -> "alerts"
-                                            "motion" -> "motion"
-                                            else -> "detections"
-                                        }
-                                        val payload: List<String> = if (next.isEmpty()) listOf("all") else next
-                                        try {
-                                            appContainer.client.configSetTyped(mapOf("cameras.$cam.review.$key" to payload))
-                                            reviewMap = reviewMap + (cam to next)
-                                            appContainer.client.configSave()
-                                        } catch (e: Exception) {
-                                            msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
-                                        }
-                                    }
-                                }, label = { Text(cat) })
+                                    setCategory(cam, cat, !on)
+                                }, label = {
+                                    Text(stringResource(when (cat) {
+                                        "alarm" -> R.string.cat_alarm
+                                        "motion" -> R.string.cat_motion
+                                        else -> R.string.cat_detection
+                                    }))
+                                })
                             }
                         }
                     }
