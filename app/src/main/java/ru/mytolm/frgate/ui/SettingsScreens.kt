@@ -415,6 +415,14 @@ fun AdminCamerasScreen(nav: NavHostController) {
                                         cams = cams.toMutableList().also { it[i] = cam.copy(detectEnabled = on) }
                                         needsRestart = true
                                         msg = "Сохранено. Нажмите «Перезапустить Frigate» ниже, чтобы применить."
+                                        // Ловушка 0.17: при пустом objects.track детекция
+                                        // включена, но объекты не ищутся вовсе — детекций нет.
+                                        if (on) try {
+                                            if (ConfigParse.objectTrack(appContainer.client.config()).isEmpty()) {
+                                                msg = "Внимание: пуст список отслеживаемых объектов — " +
+                                                    "детекция будет молчать. Добавьте объекты в «Объекты»."
+                                            }
+                                        } catch (_: Exception) { }
                                     } catch (e: Exception) {
                                         msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
@@ -475,7 +483,19 @@ fun AdminCamerasScreen(nav: NavHostController) {
                         try {
                             appContainer.client.restart()
                             needsRestart = false
-                            msg = "Frigate перезапускается. Изменения применятся через минуту."
+                            msg = "Frigate перезапускается…"
+                            // ждём возврата сервера и ПЕРЕЧИТЫВАем состояние свитчей —
+                            // иначе пользователь видит старый выключенный detect
+                            kotlinx.coroutines.delay(30_000)
+                            repeat(10) {
+                                try {
+                                    cams = ConfigParse.cameras(appContainer.client.config())
+                                    msg = "Готово. Изменения применены."
+                                    return@launch
+                                } catch (_: Exception) { }
+                                kotlinx.coroutines.delay(10_000)
+                            }
+                            msg = "Frigate ещё поднимается — обновите экран через минуту."
                         } catch (e: Exception) {
                             msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                         }
