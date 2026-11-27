@@ -131,6 +131,12 @@ class FrigateClient(private val settings: ru.mytolm.frgate.data.SettingsStore) {
                 throw FrigateApiException(0, "timeout", e)
             } catch (e: javax.net.ssl.SSLException) {
                 throw FrigateApiException(0, "tls", e)
+            } catch (e: java.io.IOException) {
+                // DNS-сбой/обрылась сеть/connection reset: единый тип, который
+                // ловят ВСЕ экраны (catch FrigateApiException). Раньше
+                // UnknownHostException улетал в main и валил приложение.
+                val msg = if (e is java.net.UnknownHostException) "timeout" else "net"
+                throw FrigateApiException(0, msg, e)
             }
         }
 
@@ -173,6 +179,9 @@ class FrigateClient(private val settings: ru.mytolm.frgate.data.SettingsStore) {
                 throw FrigateApiException(0, "timeout", e)
             } catch (e: javax.net.ssl.SSLException) {
                 throw FrigateApiException(0, "tls", e)
+            } catch (e: java.io.IOException) {
+                val msg = if (e is java.net.UnknownHostException) "timeout" else "net"
+                throw FrigateApiException(0, msg, e)
             }
         }
 

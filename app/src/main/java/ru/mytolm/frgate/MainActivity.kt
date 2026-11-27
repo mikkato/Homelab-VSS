@@ -292,6 +292,7 @@ fun errText(key: String?): String {
         key == "forbidden" -> ctx.getString(R.string.err_forbidden)
         key == "badgateway" -> ctx.getString(R.string.err_badgateway)
         key == "timeout" -> ctx.getString(R.string.err_timeout)
+        key == "net" -> ctx.getString(R.string.err_badgateway)
         key == "tls" -> ctx.getString(R.string.err_tls)
         else -> ctx.getString(R.string.error_generic) + " $key"
     }
