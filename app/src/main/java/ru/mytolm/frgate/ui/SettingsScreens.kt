@@ -909,6 +909,7 @@ fun LogsScreen(nav: NavHostController) {
     var text by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
+    var savedMsg by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
 
@@ -936,7 +937,7 @@ fun LogsScreen(nav: NavHostController) {
 
     Scaffold(topBar = { ScreenHeader(stringResource(R.string.settings_logs), onBack = { nav.popBackStack() }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "frigate", onClick = { source = "frigate" }, label = { Text(stringResource(R.string.log_frigate)) })
                 FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "go2rtc", onClick = { source = "go2rtc" }, label = { Text(stringResource(R.string.log_go2rtc)) })
                 FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "app", onClick = { source = "app" }, label = { Text("Приложение") })
@@ -950,6 +951,36 @@ fun LogsScreen(nav: NavHostController) {
                         }
                     }
                 }) { Text(stringResource(R.string.retry)) }
+            }
+            // Экспорт: скопировать в буфер / сохранить .txt в Загрузки (MediaStore — без разрешений)
+            Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("frigate-logs", text))
+                    savedMsg = "Скопировано в буфер обмена"
+                }, enabled = text.isNotBlank()) { Text("Копировать") }
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        val name = "frigate-$source-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
+                        val uri = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                            put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
+                        }.let { ctx.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, it) }
+                        if (uri == null) { savedMsg = "Не удалось сохранить"; return@launch }
+                        val io = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            runCatching {
+                                ctx.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+                                name
+                            }
+                        }
+                        savedMsg = io.getOrNull()?.let { "Сохранено в Загрузки: $it" } ?: "Ошибка записи файла"
+                    }
+                }, enabled = text.isNotBlank()) { Text("Сохранить в Загрузки") }
+            }
+            savedMsg?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall)
             }
             OutlinedTextField(query, { query = it }, singleLine = true,
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cd_search)) },

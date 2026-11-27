@@ -110,6 +110,9 @@ class ReviewViewModel : ViewModel() {
                 val items = appContainer.client.review(
                     cameras = camFilter?.let { listOf(it) } ?: emptyList()
                 ).filter { !it.viewed }
+                    // Frigate 0.17 иногда отдаёт один review-id дважды → дубль key
+                    // в LazyColumn роняет всё приложение (Key was already used)
+                    .distinctBy { it.id }
                 appContainer.db.reviewDao().upsert(
                     items.map {
                         ReviewEntity(
@@ -133,6 +136,7 @@ class ReviewViewModel : ViewModel() {
                     cachedItems = appContainer.db.reviewDao().recentList(100)
                         .map { it.toReviewSummary() }
                         .filter { r -> !r.viewed && (camFilter == null || r.camera == camFilter) }
+                        .distinctBy { it.id }
                     cachedCams = appContainer.db.cameraDao().allList().map { it.name }
                 } catch (_: Exception) { }
                 _state.update {

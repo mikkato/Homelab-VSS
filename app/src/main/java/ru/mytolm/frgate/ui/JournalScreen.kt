@@ -128,7 +128,9 @@ class JournalViewModel : ViewModel() {
                     loading = false,
                     offline = offlineErr,
                     error = if (acc.isEmpty()) errMsg else null,
-                    events = acc,
+                    // offset-пагинация + новые события между страницами = дубли;
+                    // дубль key в LazyColumn роняет приложение
+                    events = acc.distinctBy { e -> e.id },
                 )
             }
         }
