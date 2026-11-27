@@ -51,9 +51,17 @@ class SettingsStore(context: Context) {
             runCatching {
                 val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
                 ks.load(null)
-                ks.deleteEntry("androidx.security.crypto.MasterKey")
+                // Дефолтный алиас MasterKey — "_androidx_security_master_key_"
+                // (раньше удаляли выдуманный "androidx.security.crypto.MasterKey":
+                // битый ключ оставался в Keystore, повторный create бросал снова,
+                // и каждое обращение к настройкам роняло приложение)
+                ks.deleteEntry(androidx.security.crypto.MasterKey.DEFAULT_MASTER_KEY_ALIAS)
             }
-            createPrefs(context)
+            // второй провал — не даём упасть: открытые SharedPreferences вместо зашифрованных
+            try { createPrefs(context) } catch (e2: Exception) {
+                ru.mytolm.frgate.util.Diag.error("settings.recover.plain", e2)
+                context.getSharedPreferences("frgate_prefs_plain", android.content.Context.MODE_PRIVATE)
+            }
         }
     }
 

@@ -41,17 +41,44 @@ fun SettingsScreen(nav: NavHostController) {
     val role by appContainer.userRole.collectAsState()
     var version by remember { mutableStateOf<String?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    var crashNote by remember { mutableStateOf<String?>(null) }
     var confirmRestart by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         version = try { appContainer.client.version() } catch (e: Exception) { null }
         appContainer.refreshRole() // top10-5 (F6)
+        // Если приложение падало — показать дамп прямо на экране: с телефона стек
+        // иначе недоступен (release не debuggable), а без стека падение не починить.
+        crashNote = run {
+            val files = ru.mytolm.frgate.util.Diag.pendingCrashFiles()
+            if (files.isEmpty()) null
+            else files.last().let { f ->
+                val head = runCatching {
+                    f.readLines().let { ls ->
+                        val i = ls.indexOfFirst { it.startsWith("=== exception ===") }
+                        ls.drop(i + 1).take(8).joinToString("\n")
+                    }
+                }.getOrDefault(f.name)
+                "Приложение падало (${f.name.removePrefix("diag-crash-").removeSuffix(".log")}). Зайди: Настройки → Логи → «Приложение» — там полный стек. Отправь этот текст.\n\n$head"
+            }
+        }
     }
 
     Scaffold(topBar = { ScreenHeader(stringResource(R.string.tab_settings)) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
+
+            crashNote?.let {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer)
+                        TextButton(onClick = { crashNote = null }) { Text("Скрыть") }
+                    }
+                }
+            }
 
             // --- Подключение ---
             Section(stringResource(R.string.settings_connection))
@@ -883,8 +910,25 @@ fun LogsScreen(nav: NavHostController) {
     var query by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(source) {
+        // «Приложение»: локальный diag-журнал + crash-дампы (readable even when
+        // сервер недоступен; переживает native-крах — см. Diag.marker)
+        if (source == "app") {
+            text = buildString {
+                ru.mytolm.frgate.util.Diag.pendingCrashFiles().forEach { f ->
+                    append("### ").append(f.name).append('\n')
+                    append(runCatching { f.readText() }.getOrDefault("")).append('\n')
+                }
+                val trace = java.io.File(ctx.filesDir, "diag/diag-trace.log")
+                append("### diag-trace (последние шаги)\n")
+                append(runCatching {
+                    trace.readLines().takeLast(400).joinToString("\n")
+                }.getOrDefault(""))
+            }
+            return@LaunchedEffect
+        }
         try { text = appContainer.client.logs(source) } catch (e: Exception) {
             err = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu ?: "timeout")
         }
@@ -895,9 +939,14 @@ fun LogsScreen(nav: NavHostController) {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "frigate", onClick = { source = "frigate" }, label = { Text(stringResource(R.string.log_frigate)) })
                 FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "go2rtc", onClick = { source = "go2rtc" }, label = { Text(stringResource(R.string.log_go2rtc)) })
+                FilterChip(modifier = Modifier.minimumInteractiveComponentSize(), selected = source == "app", onClick = { source = "app" }, label = { Text("Приложение") })
                 TextButton(onClick = {
                     scope.launch {
-                        try { text = appContainer.client.logs(source) } catch (_: Exception) {
+                        if (source == "app") {
+                            text = ru.mytolm.frgate.util.Diag.pendingCrashFiles().joinToString("\n") { f ->
+                                "### ${f.name}\n" + runCatching { f.readText() }.getOrDefault("")
+                            }
+                        } else try { text = appContainer.client.logs(source) } catch (_: Exception) {
                         }
                     }
                 }) { Text(stringResource(R.string.retry)) }
