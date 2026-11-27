@@ -407,12 +407,39 @@ private fun FlowRowWrap(content: @Composable () -> Unit) {
 fun AdminCamerasScreen(nav: NavHostController) {
     var cams by remember { mutableStateOf<List<CameraInfo>>(emptyList()) }
     var msg by remember { mutableStateOf<String?>(null) }
-    var needsRestart by remember { mutableStateOf(false) }
-    var confirmRestart by remember { mutableStateOf(false) }
     // псевдоним камеры: (техническое имя, черновик); null = диалог закрыт
     var aliasDraft by remember { mutableStateOf<Pair<String, String>?>(null) }
     val settings = appContainer.settings.state.collectAsState().value
     val scope = rememberCoroutineScope()
+
+    // Применение через live-топик + READ-BACK: перечитываем /api/config (после
+    // update_topic Frigate отдаёт в нём уже НОВОЕ runtime-значение) и говорим
+    // «Применено» только когда сервер подтвердил. Никаких «нажмите перезапуск».
+    val applyAndVerify: suspend (String, Boolean?, Boolean?) -> Unit = { name, detect, record ->
+        cams = cams.toMutableList().also { l ->
+            val idx = l.indexOfFirst { it.name == name }
+            if (idx >= 0) l[idx] = l[idx].copy(
+                detectEnabled = detect ?: l[idx].detectEnabled,
+                recordEnabled = record ?: l[idx].recordEnabled
+            )
+        }
+        msg = "Применено."
+        try {
+            val cfg = appContainer.client.config()
+            val fresh = ConfigParse.cameras(cfg).firstOrNull { it.name == name }
+            val mismatch = fresh != null &&
+                ((detect != null && fresh.detectEnabled != detect) ||
+                    (record != null && fresh.recordEnabled != record))
+            if (mismatch) {
+                msg = "Сервер не подтвердил новое значение — обновите экран; если повторится, перезапустите Frigate в начале «Настроек»."
+            } else if (detect == true && ConfigParse.objectTrack(cfg).isEmpty()) {
+                // Ловушка 0.17: при пустом objects.track детекция включена,
+                // но объекты не ищутся вовсе — детекций нет.
+                msg = "Применено. Внимание: пуст список отслеживаемых объектов — " +
+                    "детекция будет молчать. Добавьте объекты в «Объекты»."
+            }
+        } catch (_: Exception) { }
+    }
 
     LaunchedEffect(Unit) {
         try { cams = ConfigParse.cameras(appContainer.client.config()) } catch (_: Exception) {
@@ -438,18 +465,17 @@ fun AdminCamerasScreen(nav: NavHostController) {
                             ToggleRow(stringResource(R.string.live_debug) + " detect", cam.detectEnabled) { on ->
                                 scope.launch {
                                     try {
-                                        appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.detect.enabled" to on))
-                                        cams = cams.toMutableList().also { it[i] = cam.copy(detectEnabled = on) }
-                                        needsRestart = true
-                                        msg = "Сохранено. Нажмите «Перезапустить Frigate» ниже, чтобы применить."
-                                        // Ловушка 0.17: при пустом objects.track детекция
-                                        // включена, но объекты не ищутся вовсе — детекций нет.
-                                        if (on) try {
-                                            if (ConfigParse.objectTrack(appContainer.client.config()).isEmpty()) {
-                                                msg = "Внимание: пуст список отслеживаемых объектов — " +
-                                                    "детекция будет молчать. Добавьте объекты в «Объекты»."
-                                            }
-                                        } catch (_: Exception) { }
+                                        // Frigate 0.17 (frigate/video.py): процесс детекции
+                                        // подписан на топик config/cameras/<cam>/detect и
+                                        // перечитывает detect.enabled на каждом кадре —
+                                        // применяется НАЛЕТУ, рестарт не нужен. Без
+                                        // update_topic публикация не идёт, и значение
+                                        // «не применялось» до перезапуска (баг 2.1.6-).
+                                        appContainer.client.configSetLive(
+                                            "cameras.${cam.name}.detect.enabled", on,
+                                            "config/cameras/${cam.name}/detect"
+                                        )
+                                        applyAndVerify(cam.name, on, null)
                                     } catch (e: Exception) {
                                         msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
@@ -458,10 +484,12 @@ fun AdminCamerasScreen(nav: NavHostController) {
                             ToggleRow("record", cam.recordEnabled) { on ->
                                 scope.launch {
                                     try {
-                                        appContainer.client.configSetTyped(mapOf("cameras.${cam.name}.record.enabled" to on))
-                                        cams = cams.toMutableList().also { it[i] = cam.copy(recordEnabled = on) }
-                                        needsRestart = true
-                                        msg = "Сохранено. Нажмите «Перезапустить Frigate» ниже, чтобы применить."
+                                        // video_output.py подписан на record+enabled — тоже налету
+                                        appContainer.client.configSetLive(
+                                            "cameras.${cam.name}.record.enabled", on,
+                                            "config/cameras/${cam.name}/record"
+                                        )
+                                        applyAndVerify(cam.name, null, on)
                                     } catch (e: Exception) {
                                         msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
                                     }
@@ -486,53 +514,8 @@ fun AdminCamerasScreen(nav: NavHostController) {
                         }
                     }
                 }
-                // detect/record применяются Frigate только после перезапуска — кнопка рядом
-                if (needsRestart) {
-                    item {
-                        Button(onClick = { confirmRestart = true }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                            Text(stringResource(R.string.settings_restart))
-                        }
-                    }
-                }
             }
         }
-    }
-    // Рестарт NVR — только через подтверждение (как в общих настройках)
-    if (confirmRestart) {
-        AlertDialog(
-            onDismissRequest = { confirmRestart = false },
-            title = { Text(stringResource(R.string.settings_restart)) },
-            text = { Text(stringResource(R.string.confirm_restart_text, appContainer.settings.normalizedBase())) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmRestart = false
-                    scope.launch {
-                        try {
-                            appContainer.client.restart()
-                            needsRestart = false
-                            msg = "Frigate перезапускается…"
-                            // ждём возврата сервера и ПЕРЕЧИТЫВАем состояние свитчей —
-                            // иначе пользователь видит старый выключенный detect
-                            kotlinx.coroutines.delay(30_000)
-                            repeat(10) {
-                                try {
-                                    cams = ConfigParse.cameras(appContainer.client.config())
-                                    msg = "Готово. Изменения применены."
-                                    return@launch
-                                } catch (_: Exception) { }
-                                kotlinx.coroutines.delay(10_000)
-                            }
-                            msg = "Frigate ещё поднимается — обновите экран через минуту."
-                        } catch (e: Exception) {
-                            msg = errText((e as? ru.mytolm.frgate.frigate.FrigateApiException)?.messageRu)
-                        }
-                    }
-                }) { Text(stringResource(R.string.settings_restart), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRestart = false }) { Text(stringResource(R.string.cancel)) }
-            }
-        )
     }
     // Диалог псевдонима: только в приложении, конфиг Frigate не трогаем
     aliasDraft?.let { (cam, draft) ->
