@@ -300,6 +300,18 @@ fun errText(key: String?): String {
 @Composable
 fun MainPager(nav: NavHostController, pager: androidx.compose.foundation.pager.PagerState) {
     val scope = rememberCoroutineScope()
+    var crashNote by remember {
+        mutableStateOf(
+            ru.mytolm.frgate.util.Diag.pendingCrashFiles().lastOrNull()?.let { f ->
+                val head = runCatching {
+                    val ls = f.readLines()
+                    val i = ls.indexOfFirst { it.startsWith("=== exception ===") }
+                    ls.drop(i + 1).take(6).joinToString(" ⏎ ")
+                }.getOrDefault("")
+                "Было падение (${f.name.removePrefix("diag-crash-").removeSuffix(".log")}): $head"
+            }
+        )
+    }
     val tabRes = listOf(
         R.string.tab_live, R.string.tab_review, R.string.tab_explore,
         R.string.tab_records, R.string.tab_journal, R.string.tab_settings
@@ -324,6 +336,21 @@ fun MainPager(nav: NavHostController, pager: androidx.compose.foundation.pager.P
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
+        }
+        // Падение было — стек виден сразу, без захода в Настройки (экран может и падать)
+        crashNote?.let {
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Column(Modifier.padding(10.dp)) {
+                    Text(it, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer, maxLines = 6,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    TextButton(onClick = { crashNote = null },
+                        modifier = Modifier.align(Alignment.End)) { Text("Скрыть") }
+                }
+            }
         }
         HorizontalPager(state = pager, modifier = Modifier.weight(1f)) { p ->
             when (p) {
